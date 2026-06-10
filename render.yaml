@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: schedurx-ultravox-demo-api
+    runtime: node
+    plan: free
+    region: ohio
+    autoDeploy: true
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: "production"
+      - key: PORT
+        value: "10000"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: TWILIO_VALIDATE_SIGNATURES
+        value: "true"
+      - key: LOG_LEVEL
+        value: "info"
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: ULTRAVOX_API_KEY
+        sync: false
+      - key: ULTRAVOX_AGENT_ID
+        sync: false
+      - key: ULTRAVOX_WEBHOOK_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_CALLS_TABLE
+        value: "phone_calls"
+      - key: CALL_STORE_DRIVER
+        value: "supabase"
+      - key: ULTRAVOX_API_BASE_URL
+        value: "https://api.ultravox.ai/api"
+      - key: ULTRAVOX_RECORDING_ENABLED
+        value: "false"
+      - key: ULTRAVOX_JOIN_TIMEOUT
+        value: "30s"
+      - key: ULTRAVOX_MAX_DURATION
+        value: "1800s"
