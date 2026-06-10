@@ -1,6 +1,11 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const crypto = require("node:crypto");
+const {
+  appendTwilioStatusEvent,
+  appendUltravoxEvent,
+  createIncomingTwilioCallRecord,
+  touchCallRecord,
+} = require("../domain/call-record");
 
 class FileCallRepository {
   constructor(filePath) {
@@ -36,29 +41,7 @@ class FileCallRepository {
   }
 
   async createIncomingTwilioCall(payload) {
-    const record = {
-      localCallId: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      state: "received",
-      twilio: {
-        callSid: payload.CallSid,
-        accountSid: payload.AccountSid || null,
-        from: payload.From || null,
-        to: payload.To || null,
-        direction: payload.Direction || "inbound",
-        status: payload.CallStatus || "ringing",
-        initialPayload: payload,
-        statusEvents: [],
-      },
-      ultravox: {
-        callId: null,
-        joinUrl: null,
-        status: "pending",
-        events: [],
-      },
-      lastError: null,
-    };
+    const record = createIncomingTwilioCallRecord(payload);
 
     this.state.calls.push(record);
     await this.#persist();
@@ -73,7 +56,7 @@ class FileCallRepository {
       this.state.calls[index] = call;
     }
 
-    call.updatedAt = new Date().toISOString();
+    touchCallRecord(call);
     await this.#persist();
     return call;
   }
@@ -85,16 +68,7 @@ class FileCallRepository {
       record = await this.createIncomingTwilioCall(payload);
     }
 
-    record.twilio.status = payload.CallStatus || record.twilio.status;
-    record.twilio.statusEvents.push({
-      receivedAt: new Date().toISOString(),
-      payload,
-    });
-
-    if (payload.CallStatus === "completed") {
-      record.state = "completed";
-    }
-
+    appendTwilioStatusEvent(record, payload);
     return this.save(record);
   }
 
@@ -104,28 +78,19 @@ class FileCallRepository {
       return null;
     }
 
-    record.ultravox.status = eventPayload.event;
-    record.ultravox.events.push({
-      receivedAt: new Date().toISOString(),
-      payload: eventPayload,
-    });
-
-    if (eventPayload.event === "call.joined") {
-      record.state = "live";
-    } else if (eventPayload.event === "call.ended" || eventPayload.event === "call.billed") {
-      record.state = "completed";
-    }
-
+    appendUltravoxEvent(record, eventPayload);
     return this.save(record);
   }
 
   async #persist() {
-    this.writeQueue = this.writeQueue.then(async () => {
-      const tmpFilePath = `${this.filePath}.${process.pid}.tmp`;
-      const body = JSON.stringify(this.state, null, 2);
-      await fs.writeFile(tmpFilePath, body, "utf8");
-      await fs.rename(tmpFilePath, this.filePath);
-    });
+    this.writeQueue = this.writeQueue
+      .catch(() => {})
+      .then(async () => {
+        const tmpFilePath = `${this.filePath}.${process.pid}.tmp`;
+        const body = JSON.stringify(this.state, null, 2);
+        await fs.writeFile(tmpFilePath, body, "utf8");
+        await fs.rename(tmpFilePath, this.filePath);
+      });
 
     return this.writeQueue;
   }

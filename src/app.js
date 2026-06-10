@@ -4,6 +4,8 @@ const { config } = require("./config");
 const { logger } = require("./logger");
 const { verifyTwilioSignature } = require("./security/twilio-signature");
 const { verifyUltravoxSignature } = require("./security/ultravox-signature");
+const { bearerAuth } = require("./middleware/bearer-auth");
+const { createToolsRouter } = require("./routes/tools");
 
 function captureRawBody(request, response, buffer) {
   if (buffer?.length) {
@@ -11,7 +13,7 @@ function captureRawBody(request, response, buffer) {
   }
 }
 
-function createApp({ callService }) {
+function createApp({ callService, supabaseClient }) {
   const app = express();
   app.set("trust proxy", config.trustProxy);
 
@@ -77,9 +79,15 @@ function createApp({ callService }) {
     }
   });
 
+  app.use("/tools", bearerAuth, createToolsRouter(supabaseClient));
+
   app.use((error, request, response, next) => {
-    request.log.error({ err: error }, "Unhandled request error");
-    response.status(500).json({ error: "Internal server error" });
+    const statusCode = error.statusCode || 500;
+    const message = error.expose ? error.message : "Internal server error";
+    const logLevel = statusCode >= 500 ? "error" : "warn";
+
+    request.log[logLevel]({ err: error }, "Request failed");
+    response.status(statusCode).json({ error: message });
   });
 
   return app;

@@ -32,6 +32,7 @@ const schema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   SUPABASE_CALLS_TABLE: z.string().default("phone_calls"),
   CALL_STORE_PATH: z.string().default("./data/calls.json"),
+  TOOLS_API_KEY: z.string().min(32),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -1,18 +1,21 @@
+const crypto = require("node:crypto");
 const twilio = require("twilio");
+const { attachUltravoxBridge, markBridgeFailure } = require("../domain/call-record");
+const { BadRequestError } = require("../errors");
 
 class CallService {
-  constructor({ repository, ultravoxClient, logger }) {
+  constructor({ repository, ultravoxClient, logger, supabaseClient = null }) {
     this.repository = repository;
     this.ultravoxClient = ultravoxClient;
     this.logger = logger;
+    this.supabaseClient = supabaseClient;
     this.pendingInboundCalls = new Map();
   }
 
   async handleInboundTwilioWebhook(payload) {
-    console.log("Received Twilio webhook:", payload);
     const callSid = payload.CallSid;
     if (!callSid) {
-      throw new Error("Missing CallSid in Twilio inbound request");
+      throw new BadRequestError("Missing CallSid in Twilio inbound request");
     }
 
     const existing = await this.repository.getByTwilioCallSid(callSid);
@@ -36,6 +39,10 @@ class CallService {
   }
 
   async recordTwilioStatus(payload) {
+    if (!payload.CallSid) {
+      throw new BadRequestError("Missing CallSid in Twilio status request");
+    }
+
     return this.repository.appendTwilioStatusEvent(payload.CallSid, payload);
   }
 
@@ -54,31 +61,22 @@ class CallService {
       record = await this.repository.createIncomingTwilioCall(payload);
     }
 
+    const { clinicId, patientId } = await this.#bootstrapPatient(payload);
+
     try {
       const ultravoxCall = await this.ultravoxClient.createInboundCall({
         localCallId: record.localCallId,
         twilioCallSid: payload.CallSid,
         twilioFrom: payload.From || "",
         twilioTo: payload.To || "",
+        clinicId,
+        patientId,
       });
 
-      record.state = "bridging";
-      record.ultravox.callId = ultravoxCall.callId;
-      record.ultravox.joinUrl = ultravoxCall.joinUrl;
-      record.ultravox.status = "created";
-
-      await this.repository.save(record);
+      await this.repository.save(attachUltravoxBridge(record, ultravoxCall));
       return this.#buildConnectTwiml(ultravoxCall.joinUrl);
     } catch (error) {
-      record.state = "failed";
-      record.lastError = {
-        message: error.message,
-        statusCode: error.statusCode || null,
-        responseBody: error.responseBody || null,
-        failedAt: new Date().toISOString(),
-      };
-
-      await this.repository.save(record);
+      await this.repository.save(markBridgeFailure(record, error));
 
       this.logger.error(
         {
@@ -91,6 +89,61 @@ class CallService {
 
       return this.#buildFailureTwiml();
     }
+  }
+
+  // Resolves clinicId from the To number and upserts a Patient row from the From number.
+  // Never throws — returns nulls so the call still connects on any DB error.
+  async #bootstrapPatient(payload) {
+    if (!this.supabaseClient) {
+      return { clinicId: null, patientId: null };
+    }
+
+    let clinicId = null;
+    let patientId = null;
+
+    try {
+      if (payload.To) {
+        const { data: clinic } = await this.supabaseClient
+          .from("Clinic")
+          .select("id")
+          .eq("phone", payload.To)
+          .maybeSingle();
+        clinicId = clinic?.id ?? null;
+      }
+
+      if (payload.From && clinicId) {
+        const { data: existing } = await this.supabaseClient
+          .from("Patient")
+          .select("id")
+          .eq("contactNumber", payload.From)
+          .eq("clinicId", clinicId)
+          .maybeSingle();
+
+        if (existing) {
+          patientId = existing.id;
+        } else {
+          const { data: created } = await this.supabaseClient
+            .from("Patient")
+            .insert({
+              id: `pat_${crypto.randomUUID()}`,
+              clinicId,
+              fullName: null,
+              contactNumber: payload.From,
+              createdAt: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+          patientId = created?.id ?? null;
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        { err: error, twilioFrom: payload.From, twilioTo: payload.To },
+        "Patient bootstrap failed — call will continue without patient context",
+      );
+    }
+
+    return { clinicId, patientId };
   }
 
   #buildConnectTwiml(joinUrl) {

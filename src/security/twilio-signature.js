@@ -1,8 +1,17 @@
 const twilio = require("twilio");
 const { config } = require("../config");
 
-function buildPublicUrl(request) {
-  return new URL(request.originalUrl, config.PUBLIC_BASE_URL).toString();
+function buildCandidateUrls(request) {
+  const candidates = new Set();
+  const forwardedProto = (request.get("X-Forwarded-Proto") || request.protocol || "https").split(",")[0].trim();
+  const forwardedHost = (request.get("X-Forwarded-Host") || request.get("Host") || "").split(",")[0].trim();
+
+  if (forwardedHost) {
+    candidates.add(new URL(`${forwardedProto}://${forwardedHost}${request.originalUrl}`).toString());
+  }
+
+  candidates.add(new URL(request.originalUrl, config.PUBLIC_BASE_URL).toString());
+  return [...candidates];
 }
 
 function verifyTwilioSignature(request) {
@@ -15,8 +24,10 @@ function verifyTwilioSignature(request) {
     return false;
   }
 
-  const url = buildPublicUrl(request);
-  return twilio.validateRequest(config.TWILIO_AUTH_TOKEN, signature, url, request.body);
+  const candidateUrls = buildCandidateUrls(request);
+  return candidateUrls.some((url) =>
+    twilio.validateRequest(config.TWILIO_AUTH_TOKEN, signature, url, request.body),
+  );
 }
 
 module.exports = {

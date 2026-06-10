@@ -1,10 +1,10 @@
-const crypto = require("node:crypto");
 const { createClient } = require("@supabase/supabase-js");
-const { config } = require("../config");
-
-function nowIso() {
-  return new Date().toISOString();
-}
+const {
+  appendTwilioStatusEvent,
+  appendUltravoxEvent,
+  createIncomingTwilioCallRecord,
+  nowIso,
+} = require("../domain/call-record");
 
 function mapRowToCall(row) {
   if (!row) {
@@ -59,7 +59,7 @@ function mapCallToRow(call) {
 }
 
 class SupabaseCallRepository {
-  constructor({ logger }) {
+  constructor({ config, logger }) {
     this.logger = logger;
     this.table = config.SUPABASE_CALLS_TABLE;
     this.client = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, {
@@ -106,31 +106,7 @@ class SupabaseCallRepository {
   }
 
   async createIncomingTwilioCall(payload) {
-    const record = {
-      localCallId: crypto.randomUUID(),
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      state: "received",
-      twilio: {
-        callSid: payload.CallSid,
-        accountSid: payload.AccountSid || null,
-        from: payload.From || null,
-        to: payload.To || null,
-        direction: payload.Direction || "inbound",
-        status: payload.CallStatus || "ringing",
-        initialPayload: payload,
-        statusEvents: [],
-      },
-      ultravox: {
-        callId: null,
-        joinUrl: null,
-        status: "pending",
-        events: [],
-      },
-      lastError: null,
-    };
-
-    return this.save(record);
+    return this.save(createIncomingTwilioCallRecord(payload));
   }
 
   async save(call) {
@@ -159,16 +135,7 @@ class SupabaseCallRepository {
       record = await this.createIncomingTwilioCall(payload);
     }
 
-    record.twilio.status = payload.CallStatus || record.twilio.status;
-    record.twilio.statusEvents.push({
-      receivedAt: nowIso(),
-      payload,
-    });
-
-    if (payload.CallStatus === "completed") {
-      record.state = "completed";
-    }
-
+    appendTwilioStatusEvent(record, payload);
     return this.save(record);
   }
 
@@ -178,18 +145,7 @@ class SupabaseCallRepository {
       return null;
     }
 
-    record.ultravox.status = eventPayload.event;
-    record.ultravox.events.push({
-      receivedAt: nowIso(),
-      payload: eventPayload,
-    });
-
-    if (eventPayload.event === "call.joined") {
-      record.state = "live";
-    } else if (eventPayload.event === "call.ended" || eventPayload.event === "call.billed") {
-      record.state = "completed";
-    }
-
+    appendUltravoxEvent(record, eventPayload);
     return this.save(record);
   }
 }

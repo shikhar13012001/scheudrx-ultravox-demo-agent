@@ -1,47 +1,68 @@
-const { config } = require("../config");
+const DEFAULT_REQUEST_TIMEOUT_MS = 8000;
 
 class UltravoxClient {
-  constructor(logger) {
+  constructor({
+    config,
+    fetchImpl = globalThis.fetch,
+    logger,
+    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  } = {}) {
+    if (!config) {
+      throw new Error("UltravoxClient requires config");
+    }
+
+    if (!fetchImpl) {
+      throw new Error("A fetch implementation is required for UltravoxClient");
+    }
+
+    this.config = config;
+    this.fetch = fetchImpl;
     this.logger = logger;
+    this.requestTimeoutMs = requestTimeoutMs;
   }
 
   async createInboundCall(metadata = {}) {
+    const webhookCallback = {
+      url: `${this.config.PUBLIC_BASE_URL}/webhooks/ultravox`,
+      secrets: [this.config.ULTRAVOX_WEBHOOK_SECRET],
+    };
+
+    const enrichedMetadata = {
+      ...metadata,
+      toolsBaseUrl: `${this.config.PUBLIC_BASE_URL}/tools`,
+      toolsApiKey: this.config.TOOLS_API_KEY,
+    };
+
     const body = {
       medium: { twilio: {} },
       firstSpeakerSettings: { agent: {} },
-      recordingEnabled: config.ULTRAVOX_RECORDING_ENABLED,
-      joinTimeout: config.ULTRAVOX_JOIN_TIMEOUT,
-      maxDuration: config.ULTRAVOX_MAX_DURATION,
-      metadata,
+      recordingEnabled: this.config.ULTRAVOX_RECORDING_ENABLED,
+      joinTimeout: this.config.ULTRAVOX_JOIN_TIMEOUT,
+      maxDuration: this.config.ULTRAVOX_MAX_DURATION,
+      metadata: enrichedMetadata,
       callbacks: {
-        joined: {
-          url: `${config.PUBLIC_BASE_URL}/webhooks/ultravox`,
-          secrets: [config.ULTRAVOX_WEBHOOK_SECRET],
-        },
-        ended: {
-          url: `${config.PUBLIC_BASE_URL}/webhooks/ultravox`,
-          secrets: [config.ULTRAVOX_WEBHOOK_SECRET],
-        },
-        billed: {
-          url: `${config.PUBLIC_BASE_URL}/webhooks/ultravox`,
-          secrets: [config.ULTRAVOX_WEBHOOK_SECRET],
-        },
+        joined: webhookCallback,
+        ended: webhookCallback,
+        billed: webhookCallback,
       },
     };
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
 
     try {
-      const response = await fetch(`${config.ULTRAVOX_API_BASE_URL}/agents/${config.ULTRAVOX_AGENT_ID}/calls`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": config.ULTRAVOX_API_KEY,
+      const response = await this.fetch(
+        `${this.config.ULTRAVOX_API_BASE_URL}/agents/${this.config.ULTRAVOX_AGENT_ID}/calls`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": this.config.ULTRAVOX_API_KEY,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
         },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      );
 
       const data = await response.json().catch(() => null);
 
@@ -52,10 +73,20 @@ class UltravoxClient {
         throw error;
       }
 
-      return data;
+      return this.#parseCreateCallResponse(data);
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  #parseCreateCallResponse(data) {
+    if (!data?.callId || !data?.joinUrl) {
+      const error = new Error("Ultravox call creation response was missing callId or joinUrl");
+      error.responseBody = data;
+      throw error;
+    }
+
+    return data;
   }
 }
 
