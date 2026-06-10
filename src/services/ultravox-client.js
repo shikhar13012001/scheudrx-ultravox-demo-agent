@@ -27,11 +27,15 @@ class UltravoxClient {
       secrets: [this.config.ULTRAVOX_WEBHOOK_SECRET],
     };
 
-    const enrichedMetadata = {
+    // Ultravox metadata values must be strings — strip nulls/undefined before sending.
+    const rawMetadata = {
       ...metadata,
       toolsBaseUrl: `${this.config.PUBLIC_BASE_URL}/tools`,
       toolsApiKey: this.config.TOOLS_API_KEY,
     };
+    const enrichedMetadata = Object.fromEntries(
+      Object.entries(rawMetadata).filter(([, v]) => v != null),
+    );
 
     const body = {
       medium: { twilio: {} },
