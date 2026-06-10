@@ -79,6 +79,17 @@ function createApp({ callService, supabaseClient }) {
     }
   });
 
+  // No-auth echo tool — register BEFORE bearerAuth so Ultravox can call it without a key.
+  // Use this to inspect exactly what Ultravox sends (headers + body) during a tool call.
+  app.post("/tools/debug/echo", (request, response) => {
+    const payload = { headers: request.headers, body: request.body };
+    request.log.info(payload, "[tool:debug] echo invoked");
+    response.json({
+      message: "Echo received. Check server logs for full request details.",
+      received: payload,
+    });
+  });
+
   app.use("/tools", bearerAuth, createToolsRouter(supabaseClient));
 
   app.use((error, request, response, next) => {

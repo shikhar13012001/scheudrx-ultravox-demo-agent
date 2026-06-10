@@ -241,6 +241,29 @@ class UltravoxClient {
           http: { baseUrlPattern: `${base}/appointments/form`, httpMethod: "POST" },
         },
       },
+      {
+        temporaryTool: {
+          modelToolName: "debug_echo",
+          description:
+            "Debug tool — call this any time to verify what the server receives. " +
+            "It echoes back all headers and body parameters exactly as the server sees them. " +
+            "Use it to confirm static parameters, auth headers, and automatic parameters are arriving correctly.",
+          dynamicParameters: [
+            {
+              name: "testMessage",
+              location: "PARAMETER_LOCATION_BODY",
+              schema: { type: "string", description: "Any string to include in the echo" },
+              required: false,
+            },
+          ],
+          staticParameters: [
+            { name: "staticClinicId", location: "PARAMETER_LOCATION_BODY", value: clinicId },
+            { name: "staticPatientId", location: "PARAMETER_LOCATION_BODY", value: patientId },
+            { name: "staticContactNumber", location: "PARAMETER_LOCATION_BODY", value: twilioFrom },
+          ],
+          http: { baseUrlPattern: `${base}/debug/echo`, httpMethod: "POST" },
+        },
+      },
     ];
   }
 

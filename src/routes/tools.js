@@ -7,6 +7,7 @@ function createToolsRouter(supabaseClient) {
   // POST /tools/patients/identify
   // Look up patient by contactNumber + clinicId, create if not found.
   router.post("/patients/identify", async (req, res) => {
+    req.log.info({ headers: req.headers, body: req.body }, "[tool] identify_patient invoked");
     const { contactNumber, clinicId, fullName = null } = req.body ?? {};
 
     if (!contactNumber || !clinicId) {
@@ -69,6 +70,7 @@ function createToolsRouter(supabaseClient) {
   // POST /tools/patients/update
   // PATCH semantics — only updates fields present in the payload. Null-fills omitted fields.
   router.post("/patients/update", async (req, res) => {
+    req.log.info({ headers: req.headers, body: req.body }, "[tool] update_patient invoked");
     const { patientId, fullName, age, gender } = req.body ?? {};
 
     if (!patientId) {
@@ -132,6 +134,7 @@ function createToolsRouter(supabaseClient) {
   // POST /tools/doctors/list
   // Returns all active doctors for a clinic.
   router.post("/doctors/list", async (req, res) => {
+    req.log.info({ headers: req.headers, body: req.body }, "[tool] list_doctors invoked");
     const { clinicId } = req.body ?? {};
 
     if (!clinicId) {
@@ -165,6 +168,7 @@ function createToolsRouter(supabaseClient) {
   // Creates an appointment. Only patientId, clinicId, doctorId are required;
   // all clinical fields default to null so the call never fails mid-collection.
   router.post("/appointments/book", async (req, res) => {
+    req.log.info({ headers: req.headers, body: req.body }, "[tool] book_appointment invoked");
     const {
       patientId,
       clinicId,
@@ -225,6 +229,7 @@ function createToolsRouter(supabaseClient) {
   // POST /tools/appointments/form
   // Returns the intake form URL for an existing appointment.
   router.post("/appointments/form", async (req, res) => {
+    req.log.info({ headers: req.headers, body: req.body }, "[tool] get_appointment_form invoked");
     const { appointmentId } = req.body ?? {};
 
     if (!appointmentId) {
