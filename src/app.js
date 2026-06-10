@@ -6,6 +6,7 @@ const { verifyTwilioSignature } = require("./security/twilio-signature");
 const { verifyUltravoxSignature } = require("./security/ultravox-signature");
 const { bearerAuth } = require("./middleware/bearer-auth");
 const { createToolsRouter } = require("./routes/tools");
+const callStore = require("./stores/call-store");
 
 function captureRawBody(request, response, buffer) {
   if (buffer?.length) {
@@ -73,6 +74,14 @@ function createApp({ callService, supabaseClient }) {
       }
 
       await callService.recordUltravoxCallback(request.body);
+
+      // Clean up in-memory call state once the call ends.
+      const endedCallId = request.body?.call?.callId;
+      if (endedCallId && request.body?.event === "call.ended") {
+        request.log.info({ ultravoxCallId: endedCallId, entry: callStore.get(endedCallId) }, "[callStore] removing ended call");
+        callStore.remove(endedCallId);
+      }
+
       response.status(204).send();
     } catch (error) {
       next(error);
@@ -90,7 +99,7 @@ function createApp({ callService, supabaseClient }) {
     });
   });
 
-  app.use("/tools", bearerAuth, createToolsRouter(supabaseClient));
+  app.use("/tools", bearerAuth, createToolsRouter(supabaseClient, callStore));
 
   app.use((error, request, response, next) => {
     const statusCode = error.statusCode || 500;

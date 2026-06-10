@@ -1,14 +1,14 @@
 const { Router } = require("express");
 const crypto = require("node:crypto");
 
-function createToolsRouter(supabaseClient) {
+function createToolsRouter(supabaseClient, callStore) {
   const router = Router();
 
   // POST /tools/patients/identify
   // Look up patient by contactNumber + clinicId, create if not found.
   router.post("/patients/identify", async (req, res) => {
     req.log.info({ headers: req.headers, body: req.body }, "[tool] identify_patient invoked");
-    const { contactNumber, clinicId, fullName = null } = req.body ?? {};
+    const { contactNumber, clinicId, fullName = null, ultravoxCallId = null } = req.body ?? {};
 
     if (!contactNumber || !clinicId) {
       return res.status(422).json({ error: "contactNumber and clinicId are required" });
@@ -27,6 +27,7 @@ function createToolsRouter(supabaseClient) {
     }
 
     if (existing) {
+      if (ultravoxCallId) callStore?.upsert(ultravoxCallId, { phoneNumber: existing.contactNumber, patientId: existing.id });
       return res.json({
         patientId: existing.id,
         fullName: existing.fullName ?? null,
@@ -56,6 +57,7 @@ function createToolsRouter(supabaseClient) {
       return res.status(500).json({ error: "Internal server error" });
     }
 
+    if (ultravoxCallId) callStore?.upsert(ultravoxCallId, { phoneNumber: created.contactNumber, patientId: created.id });
     return res.status(201).json({
       patientId: created.id,
       fullName: created.fullName ?? null,
@@ -179,6 +181,7 @@ function createToolsRouter(supabaseClient) {
       notes = null,
       timeslot = null,
       durationMinutes = null,
+      ultravoxCallId = null,
     } = req.body ?? {};
 
     if (!patientId || !clinicId || !doctorId) {
@@ -211,6 +214,18 @@ function createToolsRouter(supabaseClient) {
     if (error) {
       req.log.error({ err: error, patientId, clinicId, doctorId }, "Appointment creation failed");
       return res.status(500).json({ error: "Internal server error" });
+    }
+
+    if (ultravoxCallId) {
+      callStore?.upsert(ultravoxCallId, {
+        appointment: {
+          appointmentId: data.id,
+          doctorId: data.doctorId,
+          timeslot: data.timeslot ?? null,
+          status: data.status,
+          formUrl: `/${data.clinicId}/${data.id}`,
+        },
+      });
     }
 
     return res.status(201).json({
