@@ -110,6 +110,11 @@ class UltravoxClient {
       { name: "clinicId", location: "PARAMETER_LOCATION_BODY", value: clinicId },
     ];
 
+    // automaticParameters are Ultravox-injected at invocation time — separate from staticParameters.
+    const autoParams = [
+      { name: "ultravoxCallId", location: "PARAMETER_LOCATION_BODY", knownValue: "KNOWN_PARAM_CALL_ID" },
+    ];
+
     return [
       {
         temporaryTool: {
@@ -120,6 +125,7 @@ class UltravoxClient {
             "Returns patientId, fullName, age, gender, and isNew (true if first-time caller). " +
             "Always call this first before any other tool.",
           staticParameters: withContact,
+          automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/patients/identify`, httpMethod: "POST" },
         },
       },
@@ -151,6 +157,7 @@ class UltravoxClient {
             },
           ],
           staticParameters: withPatientId,
+          automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/patients/update`, httpMethod: "POST" },
         },
       },
@@ -162,6 +169,7 @@ class UltravoxClient {
             "Call this when the patient asks who is available, wants to choose a doctor, or when you need to present doctor options before booking. " +
             "Returns a list of doctors with their name, specialty, qualification, languages, and consultation fee.",
           staticParameters: withClinicId,
+          automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/doctors/list`, httpMethod: "POST" },
         },
       },
@@ -219,6 +227,7 @@ class UltravoxClient {
             },
           ],
           staticParameters: withBooking,
+          automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/appointments/book`, httpMethod: "POST" },
         },
       },
@@ -238,6 +247,7 @@ class UltravoxClient {
             },
           ],
           staticParameters: authHeaders,
+          automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/appointments/form`, httpMethod: "POST" },
         },
       },
@@ -261,6 +271,7 @@ class UltravoxClient {
             { name: "staticPatientId", location: "PARAMETER_LOCATION_BODY", value: patientId },
             { name: "staticContactNumber", location: "PARAMETER_LOCATION_BODY", value: twilioFrom },
           ],
+          automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/debug/echo`, httpMethod: "POST" },
         },
       },
