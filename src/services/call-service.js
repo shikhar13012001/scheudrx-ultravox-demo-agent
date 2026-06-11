@@ -16,23 +16,17 @@ class CallService {
 
   async handleInboundTwilioWebhook(payload) {
     const callSid = payload.CallSid;
-    if (!callSid) {
-      throw new BadRequestError("Missing CallSid in Twilio inbound request");
-    }
+    if (!callSid) throw new BadRequestError("Missing CallSid in Twilio inbound request");
 
     const existing = await this.repository.getByTwilioCallSid(callSid);
-    if (existing?.ultravox?.joinUrl) {
-      return this.#buildConnectTwiml(existing.ultravox.joinUrl);
-    }
+    if (existing?.ultravox?.joinUrl) return this.#connectTwiml(existing.ultravox.joinUrl);
 
+    // Deduplicate concurrent Twilio retries for the same call.
     const pending = this.pendingInboundCalls.get(callSid);
-    if (pending) {
-      return pending;
-    }
+    if (pending) return pending;
 
     const task = this.#createAndBridgeCall(payload);
     this.pendingInboundCalls.set(callSid, task);
-
     try {
       return await task;
     } finally {
@@ -41,29 +35,22 @@ class CallService {
   }
 
   async recordTwilioStatus(payload) {
-    if (!payload.CallSid) {
-      throw new BadRequestError("Missing CallSid in Twilio status request");
-    }
-
+    if (!payload.CallSid) throw new BadRequestError("Missing CallSid in Twilio status request");
     return this.repository.appendTwilioStatusEvent(payload.CallSid, payload);
   }
 
   async recordUltravoxCallback(payload) {
     const callId = payload?.call?.callId;
-    if (!callId) {
-      return null;
-    }
-
+    if (!callId) return null;
     return this.repository.appendUltravoxEvent(callId, payload);
   }
 
   async #createAndBridgeCall(payload) {
     let record = await this.repository.getByTwilioCallSid(payload.CallSid);
-    if (!record) {
-      record = await this.repository.createIncomingTwilioCall(payload);
-    }
+    if (!record) record = await this.repository.createIncomingTwilioCall(payload);
 
-    const { clinicId, patientId } = await this.#bootstrapPatient(payload);
+    const clinicId = await this.#resolveClinicId(payload.To);
+    const patientId = await this.#resolveOrCreatePatient(payload.From, clinicId);
 
     try {
       const ultravoxCall = await this.ultravoxClient.createInboundCall({
@@ -82,95 +69,85 @@ class CallService {
       });
 
       await this.repository.save(attachUltravoxBridge(record, ultravoxCall));
-      return this.#buildConnectTwiml(ultravoxCall.joinUrl);
+      return this.#connectTwiml(ultravoxCall.joinUrl);
     } catch (error) {
       await this.repository.save(markBridgeFailure(record, error));
-
       this.logger.error(
-        {
-          err: error,
-          twilioCallSid: payload.CallSid,
-          localCallId: record.localCallId,
-        },
+        { err: error, twilioCallSid: payload.CallSid, localCallId: record.localCallId },
         "Failed to create Ultravox call for inbound Twilio call",
       );
-
-      return this.#buildFailureTwiml();
+      return this.#failureTwiml();
     }
   }
 
-  // Resolves clinicId from the To number and upserts a Patient row from the From number.
-  // Never throws — returns nulls so the call still connects on any DB error.
-  async #bootstrapPatient(payload) {
-    if (!this.supabaseClient) {
-      return { clinicId: null, patientId: null };
-    }
+  // Looks up the clinic for a given Twilio To-number.
+  // Checks the in-process cache first; falls back to Supabase and caches the result.
+  // Returns null (and never throws) so the call still connects on any DB error.
+  async #resolveClinicId(toPhone) {
+    if (!this.supabaseClient || !toPhone) return null;
 
-    let clinicId = null;
-    let patientId = null;
+    const cached = phoneClinicStore.get(toPhone);
+    if (cached) return cached;
 
     try {
-      if (payload.To) {
-        clinicId = phoneClinicStore.get(payload.To);
-        if (!clinicId) {
-          const { data: clinic } = await this.supabaseClient
-            .from("Clinic")
-            .select("id")
-            .eq("phone", payload.To)
-            .maybeSingle();
-          clinicId = clinic?.id ?? null;
-          if (clinicId) phoneClinicStore.set(payload.To, clinicId);
-        }
-      }
+      const { data } = await this.supabaseClient
+        .from("Clinic")
+        .select("id")
+        .eq("phone", toPhone)
+        .maybeSingle();
 
-      if (payload.From && clinicId) {
-        const { data: existing } = await this.supabaseClient
-          .from("Patient")
-          .select("id")
-          .eq("contactNumber", payload.From)
-          .eq("clinicId", clinicId)
-          .maybeSingle();
-
-        if (existing) {
-          patientId = existing.id;
-        } else {
-          const { data: created } = await this.supabaseClient
-            .from("Patient")
-            .insert({
-              id: `pat_${crypto.randomUUID()}`,
-              clinicId,
-              fullName: null,
-              contactNumber: payload.From,
-              createdAt: new Date().toISOString(),
-            })
-            .select("id")
-            .single();
-          patientId = created?.id ?? null;
-        }
-      }
+      const clinicId = data?.id ?? null;
+      if (clinicId) phoneClinicStore.set(toPhone, clinicId);
+      return clinicId;
     } catch (error) {
-      this.logger.warn(
-        { err: error, twilioFrom: payload.From, twilioTo: payload.To },
-        "Patient bootstrap failed — call will continue without patient context",
-      );
+      this.logger.warn({ err: error, toPhone }, "Clinic lookup failed — call will continue without clinic context");
+      return null;
     }
-
-    return { clinicId, patientId };
   }
 
-  #buildConnectTwiml(joinUrl) {
+  // Finds or creates a Patient row for the caller's phone number within the given clinic.
+  // Returns null (and never throws) so the call still connects on any DB error.
+  async #resolveOrCreatePatient(fromPhone, clinicId) {
+    if (!this.supabaseClient || !fromPhone || !clinicId) return null;
+
+    try {
+      const { data: existing } = await this.supabaseClient
+        .from("Patient")
+        .select("id")
+        .eq("contactNumber", fromPhone)
+        .eq("clinicId", clinicId)
+        .maybeSingle();
+
+      if (existing) return existing.id;
+
+      const { data: created } = await this.supabaseClient
+        .from("Patient")
+        .insert({
+          id: `pat_${crypto.randomUUID()}`,
+          clinicId,
+          fullName: null,
+          contactNumber: fromPhone,
+          createdAt: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+
+      return created?.id ?? null;
+    } catch (error) {
+      this.logger.warn({ err: error, fromPhone, clinicId }, "Patient bootstrap failed — call will continue without patient context");
+      return null;
+    }
+  }
+
+  #connectTwiml(joinUrl) {
     const response = new twilio.twiml.VoiceResponse();
-    const connect = response.connect();
-    connect.stream({ url: joinUrl });
+    response.connect().stream({ url: joinUrl });
     return response.toString();
   }
 
-  #buildFailureTwiml() {
+  #failureTwiml() {
     const response = new twilio.twiml.VoiceResponse();
-    response.say(
-      { voice: "alice" },
-      "Sorry, we are unable to connect your call right now. Please try again in a moment.",
-    );
+    response.say({ voice: "alice" }, "Sorry, we are unable to connect your call right now. Please try again in a moment.");
     response.hangup();
     return response.toString();
   }
