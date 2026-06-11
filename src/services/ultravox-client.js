@@ -44,7 +44,7 @@ class UltravoxClient {
       joinTimeout: this.config.ULTRAVOX_JOIN_TIMEOUT,
       maxDuration: this.config.ULTRAVOX_MAX_DURATION,
       metadata: enrichedMetadata,
-      toolOverrides: { add: this.#buildSelectedTools(enrichedMetadata) },
+      toolOverrides: { removeAll: true, add: this.#buildSelectedTools(enrichedMetadata) },
       callbacks: {
         joined: webhookCallback,
         ended: webhookCallback,
