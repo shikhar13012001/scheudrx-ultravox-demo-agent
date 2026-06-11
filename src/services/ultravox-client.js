@@ -44,7 +44,7 @@ class UltravoxClient {
       joinTimeout: this.config.ULTRAVOX_JOIN_TIMEOUT,
       maxDuration: this.config.ULTRAVOX_MAX_DURATION,
       metadata: enrichedMetadata,
-      toolOverrides: this.#buildSelectedTools(enrichedMetadata),
+      toolOverrides: { add: this.#buildSelectedTools(enrichedMetadata) },
       callbacks: {
         joined: webhookCallback,
         ended: webhookCallback,
@@ -105,10 +105,13 @@ class UltravoxClient {
         temporaryTool: {
           modelToolName: "identify_patient",
           description:
-            "Retrieve the current patient's profile at the start of every call. " +
-            "No parameters needed — the caller's phone number and clinic are already known server-side. " +
-            "Returns patientId, fullName, age, gender, and isNew (true if first-time caller). " +
-            "Always call this first before any other tool.",
+            "Look up the calling patient's record at the very start of every call, before saying anything else. " +
+            "You do not need to provide any parameters — the server already knows the caller's phone number and which clinic they dialled. " +
+            "The response tells you whether this is a returning patient (isNew: false) or a first-time caller (isNew: true), " +
+            "and returns their stored fullName, age, and gender if available. " +
+            "Use isNew to personalise your greeting: welcome back a returning patient by name, " +
+            "or introduce the clinic and collect basic details for a new one. " +
+            "This tool must be the first tool called on every call — do not skip it.",
           staticParameters: authHeaders,
           automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/patients/identify`, httpMethod: "POST" },
@@ -118,26 +121,28 @@ class UltravoxClient {
         temporaryTool: {
           modelToolName: "update_patient",
           description:
-            "Update the patient's profile with details collected during the conversation. " +
-            "Call this whenever the patient provides or corrects their full name, age, or gender. " +
-            "Only send fields the patient has explicitly confirmed; omit fields still unknown.",
+            "Persist demographic details the patient shares or corrects during the conversation. " +
+            "Call this as soon as the patient confirms or provides their full name, age, or gender — do not wait until the end of the call. " +
+            "Only include fields the patient has explicitly stated; omit any field that is still unknown or unconfirmed. " +
+            "You may call this tool multiple times if the patient corrects information later in the call. " +
+            "Returns the updated patient record so you can confirm the saved values.",
           dynamicParameters: [
             {
               name: "fullName",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Patient's full name as spoken" },
+              schema: { type: "string", description: "Patient's full name exactly as spoken, e.g. 'Rahul Sharma'" },
               required: false,
             },
             {
               name: "age",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "integer", description: "Patient's age in years" },
+              schema: { type: "integer", description: "Patient's age in years as a whole number" },
               required: false,
             },
             {
               name: "gender",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", enum: ["male", "female", "other"], description: "Patient's gender" },
+              schema: { type: "string", enum: ["male", "female", "other"], description: "Patient's gender — must be one of: male, female, other" },
               required: false,
             },
           ],
@@ -150,9 +155,12 @@ class UltravoxClient {
         temporaryTool: {
           modelToolName: "list_doctors",
           description:
-            "Fetch all currently available doctors at this clinic. " +
-            "Call this when the patient asks who is available, wants to choose a doctor, or when you need to present doctor options before booking. " +
-            "Returns a list of doctors with their name, specialty, qualification, languages, and consultation fee.",
+            "Fetch the list of doctors currently available at this clinic. " +
+            "Call this whenever the patient asks who is available, wants to know their options, or is ready to choose a doctor. " +
+            "Each doctor entry includes their name, specialty, qualification, languages spoken, and consultation fee in INR. " +
+            "Present the options clearly and naturally — for example, group by specialty if there are many, " +
+            "or highlight the fee and languages if the patient asked about those. " +
+            "The doctorId from this response is required by book_appointment.",
           staticParameters: authHeaders,
           automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/doctors/list`, httpMethod: "POST" },
@@ -162,52 +170,54 @@ class UltravoxClient {
         temporaryTool: {
           modelToolName: "book_appointment",
           description:
-            "Create a new appointment for the patient. " +
-            "Call this once the patient has confirmed their identity and selected a doctor. " +
-            "doctorId comes from list_doctors. " +
-            "All other fields (symptoms, timeslot, etc.) are optional — omit them if not collected; the booking will not fail for missing optional fields. " +
-            "Returns appointmentId, status, and formUrl. Share the formUrl with the patient at the end of the call.",
+            "Create a new appointment once the patient has confirmed their identity and chosen a doctor. " +
+            "doctorId is required and must come from the list_doctors response — never guess or make up an ID. " +
+            "All other fields are optional: collect as many as the patient is willing to share before booking, " +
+            "but do not block the booking if they are not provided — the appointment will succeed without them. " +
+            "If the patient is booking on behalf of someone else, set bookerRelation (e.g. 'parent', 'spouse') and proxyName to the patient's actual name. " +
+            "On success the response includes appointmentId, status ('pending'), and a formUrl — " +
+            "always read the formUrl to the patient at the end of the call and ask them to complete it before their visit.",
           dynamicParameters: [
             {
               name: "doctorId",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Doctor's unique identifier chosen by the patient" },
+              schema: { type: "string", description: "Unique ID of the doctor the patient selected, as returned by list_doctors" },
               required: true,
             },
             {
               name: "symptoms",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Brief description of the patient's symptoms or reason for visit" },
+              schema: { type: "string", description: "Patient's main symptom or reason for the visit in their own words, e.g. 'fever and headache for two days'" },
               required: false,
             },
             {
               name: "timeslot",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Preferred appointment date/time as ISO 8601, e.g. 2026-06-15T10:30:00" },
+              schema: { type: "string", description: "Preferred appointment date and time in ISO 8601 format, e.g. '2026-06-15T10:30:00'" },
               required: false,
             },
             {
               name: "durationMinutes",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "integer", description: "Appointment duration in minutes" },
+              schema: { type: "integer", description: "Requested appointment duration in minutes, e.g. 15 or 30" },
               required: false,
             },
             {
               name: "bookerRelation",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Relationship to the patient when booking on someone else's behalf, e.g. 'parent', 'spouse'" },
+              schema: { type: "string", description: "Caller's relationship to the patient when booking on someone else's behalf, e.g. 'parent', 'spouse', 'sibling'" },
               required: false,
             },
             {
               name: "proxyName",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Name of the person booking on behalf of the patient" },
+              schema: { type: "string", description: "Full name of the person the caller is booking for, when booking on behalf of someone else" },
               required: false,
             },
             {
               name: "notes",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Any additional notes for the appointment" },
+              schema: { type: "string", description: "Any additional context for the clinic, e.g. accessibility needs or follow-up details" },
               required: false,
             },
           ],
@@ -220,14 +230,16 @@ class UltravoxClient {
         temporaryTool: {
           modelToolName: "get_appointment_form",
           description:
-            "Retrieve the patient intake form URL for a booked appointment. " +
-            "Call this after book_appointment to obtain the formUrl, then read it to the patient or send it via SMS. " +
-            "appointmentId is returned by book_appointment.",
+            "Retrieve the patient intake form URL for an appointment that has already been booked. " +
+            "Call this immediately after book_appointment if you need to re-fetch the formUrl, " +
+            "for example if you want to send it by SMS or confirm it with the patient. " +
+            "appointmentId is returned by book_appointment. " +
+            "Always share the formUrl with the patient before ending the call and ask them to fill it in before their visit.",
           dynamicParameters: [
             {
               name: "appointmentId",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Appointment ID returned by book_appointment" },
+              schema: { type: "string", description: "Appointment ID as returned by book_appointment, e.g. 'apt_...' " },
               required: true,
             },
           ],
@@ -240,14 +252,15 @@ class UltravoxClient {
         temporaryTool: {
           modelToolName: "debug_echo",
           description:
-            "Debug tool — call this any time to verify what the server receives. " +
-            "It echoes back all headers and body parameters exactly as the server sees them. " +
-            "Use it to confirm auth headers and automatic parameters are arriving correctly.",
+            "Development-only diagnostic tool. " +
+            "Echoes back every header and body field exactly as the server received them. " +
+            "Use this during testing to confirm that auth headers and the auto-injected ultravoxCallId are arriving correctly. " +
+            "Do not call this tool during a real patient interaction.",
           dynamicParameters: [
             {
               name: "testMessage",
               location: "PARAMETER_LOCATION_BODY",
-              schema: { type: "string", description: "Any string to include in the echo" },
+              schema: { type: "string", description: "Any string you want included in the echo response" },
               required: false,
             },
           ],
