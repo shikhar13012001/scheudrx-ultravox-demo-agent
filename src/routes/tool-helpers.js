@@ -11,7 +11,7 @@ function resolveCallCtx(callStore, ultravoxCallId, log) {
 function formatPatient(row, isNew) {
   return {
     patientId: row.id,
-    fullName: row.fullName ?? null,
+    fullName: row.fullName || null,
     contactNumber: row.contactNumber,
     age: row.age ?? null,
     gender: row.gender ?? null,

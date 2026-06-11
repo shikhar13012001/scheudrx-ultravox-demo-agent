@@ -37,7 +37,7 @@ function createPatientsRouter(supabaseClient, callStore) {
       .insert({
         id: `pat_${crypto.randomUUID()}`,
         clinicId,
-        fullName: null,
+        fullName: "",
         contactNumber,
         createdAt: new Date().toISOString(),
       })

@@ -125,7 +125,7 @@ class CallService {
         .insert({
           id: `pat_${crypto.randomUUID()}`,
           clinicId,
-          fullName: null,
+          fullName: "",
           contactNumber: fromPhone,
           createdAt: new Date().toISOString(),
         })
