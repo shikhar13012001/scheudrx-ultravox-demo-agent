@@ -7,7 +7,9 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "check": "node --check src/server.js && node --check src/app.js && node --check src/config.js && node --check src/errors.js && node --check src/domain/call-record.js && node --check src/services/call-service.js && node --check src/services/ultravox-client.js && node --check src/repositories/call-repository-factory.js && node --check src/repositories/file-call-repository.js && node --check src/repositories/supabase-call-repository.js && node --check src/security/twilio-signature.js && node --check src/security/ultravox-signature.js && node --check src/middleware/bearer-auth.js && node --check src/routes/tools.js",
-    "test": "node --test"
+    "test": "node --test",
+    "setup:clinic-calendar": "node scripts/setup-clinic-calendars.js",
+    "setup:clinic-calendar:verbose": "node scripts/setup-clinic-calendars.js --verbose"
   },
   "keywords": [],
   "author": "",

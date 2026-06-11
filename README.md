@@ -158,3 +158,38 @@ Use your Render domain in Twilio and Ultravox:
 - Ultravox callback URL: `https://your-render-domain.onrender.com/webhooks/ultravox`
 
 Keep `PUBLIC_BASE_URL` exactly aligned with the public URL Twilio hits, or signature validation will fail.
+
+
+
+{
+  "clinic": {
+    "clinicId": "poc-clinic-001",
+    "schedulerClinicId": "2276ffdc-96ef-4a39-bd8b-3a3e6c02ee6a",
+    "serviceId": "2276ffdc-96ef-4a39-bd8b-3a3e6c02ee6a",
+    "calendarId": null,
+    "timezone": "Asia/Kolkata",
+    "status": "active"
+  },
+  "doctors": [
+    {
+      "doctorId": "doc-priya-001",
+      "doctorCalendarKey": "doc-priya-001_cal",
+      "schedulerDoctorId": "cb3ca8d6-8dc2-4588-8e6d-0d7c464cd198",
+      "calendarId": "4ac187a7-8cd0-4443-873d-9c4fcc68b044",
+      "clinicId": "poc-clinic-001",
+      "serviceId": "2276ffdc-96ef-4a39-bd8b-3a3e6c02ee6a",
+      "timezone": "Asia/Kolkata",
+      "status": "active"
+    },
+    {
+      "doctorId": "doc-rahul-001",
+      "doctorCalendarKey": "doc-rahul-001_cal",
+      "schedulerDoctorId": "85017309-ac52-4522-a5ef-16cb391cad10",
+      "calendarId": "66b4c61b-50bd-48f1-b79e-457a317b43bd",
+      "clinicId": "poc-clinic-001",
+      "serviceId": "2276ffdc-96ef-4a39-bd8b-3a3e6c02ee6a",
+      "timezone": "Asia/Kolkata",
+      "status": "active"
+    }
+  ]
+}

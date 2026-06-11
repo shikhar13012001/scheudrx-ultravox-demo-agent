@@ -3,6 +3,7 @@ const { config } = require("./config");
 const { logger } = require("./logger");
 const { createCallRepository } = require("./repositories/call-repository-factory");
 const { UltravoxClient } = require("./services/ultravox-client");
+const { NettuClient }    = require("./services/nettu-client");
 const { CallService } = require("./services/call-service");
 const { createApp } = require("./app");
 
@@ -41,6 +42,15 @@ async function start() {
   await repository.init();
 
   const ultravoxClient = new UltravoxClient({ config, logger });
+
+  const nettuClient = config.NETTU_BASE_URL && config.NETTU_API_KEY
+    ? new NettuClient({ baseUrl: config.NETTU_BASE_URL, apiKey: config.NETTU_API_KEY, logger })
+    : null;
+
+  if (!nettuClient) {
+    logger.warn("NETTU_BASE_URL or NETTU_API_KEY not set — calendar tools will be unavailable");
+  }
+
   const callService = new CallService({
     repository,
     ultravoxClient,
@@ -48,7 +58,7 @@ async function start() {
     supabaseClient,
   });
 
-  const app = createApp({ callService, supabaseClient });
+  const app = createApp({ callService, supabaseClient, nettuClient });
   const server = app.listen(config.PORT, () => {
     logger.info(
       {

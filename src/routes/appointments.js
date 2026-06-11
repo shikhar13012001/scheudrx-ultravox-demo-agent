@@ -1,5 +1,5 @@
-const { Router } = require("express");
-const crypto = require("node:crypto");
+const { Router }              = require("express");
+const crypto                  = require("node:crypto");
 const { resolveCallCtx, formUrl } = require("./tool-helpers");
 
 function createAppointmentsRouter(supabaseClient, callStore) {
@@ -7,21 +7,23 @@ function createAppointmentsRouter(supabaseClient, callStore) {
 
   router.post("/book", async (req, res) => {
     req.log.info({ body: req.body }, "[tool] book_appointment invoked");
-    const { ultravoxCallId, doctorId, symptoms = null, timeslot = null } = req.body ?? {};
-
-    if (!doctorId) {
-      return res.status(422).json({ error: "doctorId is required" });
-    }
+    const { ultravoxCallId, doctorId: bodyDoctorId, symptoms = null, timeslot = null } = req.body ?? {};
 
     const ctx = resolveCallCtx(callStore, ultravoxCallId, req.log);
     const clinicId = ctx?.clinicId ?? null;
-    let patientId = ctx?.patientId ?? null;
+
+    // Resolve doctorId from body first, then fall back to call context (set by select_doctor).
+    const doctorId = bodyDoctorId ?? ctx?.doctorId ?? null;
 
     if (!clinicId) {
       return res.status(422).json({ error: "clinicId could not be resolved — the clinic phone number may not be registered" });
     }
+    if (!doctorId) {
+      return res.status(422).json({ error: "doctorId is required — call select_doctor first or pass it explicitly" });
+    }
 
-    // If identify_patient was skipped, fall back to a Supabase lookup by phone number.
+    // Resolve patientId from context; fall back to a phone lookup if identify_patient was skipped.
+    let patientId = ctx?.patientId ?? null;
     if (!patientId && ctx?.phoneNumber) {
       req.log.warn({ ultravoxCallId, phoneNumber: ctx.phoneNumber }, "patientId missing — falling back to Supabase lookup");
       const { data: patient } = await supabaseClient
@@ -42,13 +44,13 @@ function createAppointmentsRouter(supabaseClient, callStore) {
     const { data, error } = await supabaseClient
       .from("Appointment")
       .insert({
-        id: `apt_${crypto.randomUUID()}`,
+        id:        `apt_${crypto.randomUUID()}`,
         clinicId,
         patientId,
         doctorId,
         symptoms,
         timeslot,
-        status: "pending",
+        status:    "pending",
         createdAt: now,
         updatedAt: now,
       })
@@ -66,15 +68,14 @@ function createAppointmentsRouter(supabaseClient, callStore) {
       callStore?.upsert(ultravoxCallId, {
         appointment: {
           appointmentId: data.id,
-          doctorId: data.doctorId,
-          timeslot: data.timeslot ?? null,
-          status: data.status,
-          formUrl: appointmentFormUrl,
+          doctorId:      data.doctorId,
+          timeslot:      data.timeslot ?? null,
+          status:        data.status,
+          formUrl:       appointmentFormUrl,
         },
       });
     }
 
-    // Log the form URL for manual delivery until SMS is configured.
     req.log.info(
       { appointmentId: data.id, phoneNumber: ctx?.phoneNumber ?? null, formUrl: appointmentFormUrl },
       "[form] appointment booked — form URL logged for delivery",
@@ -82,12 +83,12 @@ function createAppointmentsRouter(supabaseClient, callStore) {
 
     return res.status(201).json({
       appointmentId: data.id,
-      patientId: data.patientId,
-      clinicId: data.clinicId,
-      doctorId: data.doctorId,
-      symptoms: data.symptoms ?? null,
-      timeslot: data.timeslot ?? null,
-      status: data.status,
+      patientId:     data.patientId,
+      clinicId:      data.clinicId,
+      doctorId:      data.doctorId,
+      symptoms:      data.symptoms ?? null,
+      timeslot:      data.timeslot ?? null,
+      status:        data.status,
     });
   });
 
@@ -97,9 +98,9 @@ function createAppointmentsRouter(supabaseClient, callStore) {
     req.log.info({ body: req.body }, "[tool] send_form invoked");
     const { ultravoxCallId } = req.body ?? {};
 
-    const ctx = resolveCallCtx(callStore, ultravoxCallId, req.log);
+    const ctx                = resolveCallCtx(callStore, ultravoxCallId, req.log);
     const appointmentFormUrl = ctx?.appointment?.formUrl ?? null;
-    const phoneNumber = ctx?.phoneNumber ?? null;
+    const phoneNumber        = ctx?.phoneNumber ?? null;
 
     if (!appointmentFormUrl) {
       return res.status(422).json({ error: "No booked appointment found in this call — book an appointment first" });
@@ -112,8 +113,8 @@ function createAppointmentsRouter(supabaseClient, callStore) {
 
     return res.json({
       delivered: false,
-      note: "Form URL has been logged. SMS delivery will be available once messaging is configured.",
-      formUrl: appointmentFormUrl,
+      note:      "Form URL has been logged. SMS delivery will be available once messaging is configured.",
+      formUrl:   appointmentFormUrl,
     });
   });
 

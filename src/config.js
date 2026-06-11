@@ -33,6 +33,11 @@ const schema = z.object({
   SUPABASE_CALLS_TABLE: z.string().default("phone_calls"),
   CALL_STORE_PATH: z.string().default("./data/calls.json"),
   TOOLS_API_KEY: z.string().min(32),
+
+  // Nettu-scheduler (nittei) — required for calendar features.
+  // Set NETTU_BASE_URL to the URL of your running nettu-scheduler instance.
+  NETTU_BASE_URL: z.string().url().optional(),
+  NETTU_API_KEY:  z.string().min(1).optional(),
 });
 
 const parsed = schema.safeParse(process.env);

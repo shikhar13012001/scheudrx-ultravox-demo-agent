@@ -14,7 +14,7 @@ function captureRawBody(request, response, buffer) {
   }
 }
 
-function createApp({ callService, supabaseClient }) {
+function createApp({ callService, supabaseClient, nettuClient }) {
   const app = express();
   app.set("trust proxy", config.trustProxy);
 
@@ -99,7 +99,7 @@ function createApp({ callService, supabaseClient }) {
     });
   });
 
-  app.use("/tools", bearerAuth, createToolsRouter(supabaseClient, callStore));
+  app.use("/tools", bearerAuth, createToolsRouter(supabaseClient, callStore, nettuClient));
 
   app.use((error, request, response, next) => {
     const statusCode = error.statusCode || 500;
