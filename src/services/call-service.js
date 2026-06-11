@@ -2,6 +2,8 @@ const crypto = require("node:crypto");
 const twilio = require("twilio");
 const { attachUltravoxBridge, markBridgeFailure } = require("../domain/call-record");
 const { BadRequestError } = require("../errors");
+const callStore = require("../stores/call-store");
+const phoneClinicStore = require("../stores/phone-clinic-store");
 
 class CallService {
   constructor({ repository, ultravoxClient, logger, supabaseClient = null }) {
@@ -73,6 +75,12 @@ class CallService {
         patientId,
       });
 
+      callStore.upsert(ultravoxCall.callId, {
+        clinicId: clinicId ?? null,
+        patientId: patientId ?? null,
+        phoneNumber: payload.From || null,
+      });
+
       await this.repository.save(attachUltravoxBridge(record, ultravoxCall));
       return this.#buildConnectTwiml(ultravoxCall.joinUrl);
     } catch (error) {
@@ -103,12 +111,16 @@ class CallService {
 
     try {
       if (payload.To) {
-        const { data: clinic } = await this.supabaseClient
-          .from("Clinic")
-          .select("id")
-          .eq("phone", payload.To)
-          .maybeSingle();
-        clinicId = clinic?.id ?? null;
+        clinicId = phoneClinicStore.get(payload.To);
+        if (!clinicId) {
+          const { data: clinic } = await this.supabaseClient
+            .from("Clinic")
+            .select("id")
+            .eq("phone", payload.To)
+            .maybeSingle();
+          clinicId = clinic?.id ?? null;
+          if (clinicId) phoneClinicStore.set(payload.To, clinicId);
+        }
       }
 
       if (payload.From && clinicId) {

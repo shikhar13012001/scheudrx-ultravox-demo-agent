@@ -84,37 +84,18 @@ class UltravoxClient {
     }
   }
 
-  #buildSelectedTools(metadata = {}) {
+  #buildSelectedTools(_metadata = {}) {
     const base = `${this.config.PUBLIC_BASE_URL}/tools`;
     const auth = `Bearer ${this.config.TOOLS_API_KEY}`;
 
-    const { clinicId = null, patientId = null, twilioFrom = null } = metadata;
-
+    // All clinic/patient context is resolved server-side from the call store keyed by ultravoxCallId.
+    // Tools only need auth headers; no IDs are injected as static parameters.
     const authHeaders = [
       { name: "Authorization", location: "PARAMETER_LOCATION_HEADER", value: auth },
       { name: "Content-Type", location: "PARAMETER_LOCATION_HEADER", value: "application/json" },
     ];
 
-    const withContact = [
-      ...authHeaders,
-      { name: "contactNumber", location: "PARAMETER_LOCATION_BODY", value: twilioFrom },
-      { name: "clinicId", location: "PARAMETER_LOCATION_BODY", value: clinicId },
-    ];
-    const withPatientId = [
-      ...authHeaders,
-      { name: "patientId", location: "PARAMETER_LOCATION_BODY", value: patientId },
-    ];
-    const withClinicId = [
-      ...authHeaders,
-      { name: "clinicId", location: "PARAMETER_LOCATION_BODY", value: clinicId },
-    ];
-    const withBooking = [
-      ...authHeaders,
-      { name: "patientId", location: "PARAMETER_LOCATION_BODY", value: patientId },
-      { name: "clinicId", location: "PARAMETER_LOCATION_BODY", value: clinicId },
-    ];
-
-    // automaticParameters are Ultravox-injected at invocation time — separate from staticParameters.
+    // Ultravox auto-injects the call ID at invocation time.
     const autoParams = [
       { name: "ultravoxCallId", location: "PARAMETER_LOCATION_BODY", knownValue: "KNOWN_PARAM_CALL_ID" },
     ];
@@ -128,7 +109,7 @@ class UltravoxClient {
             "No parameters needed — the caller's phone number and clinic are already known server-side. " +
             "Returns patientId, fullName, age, gender, and isNew (true if first-time caller). " +
             "Always call this first before any other tool.",
-          staticParameters: withContact,
+          staticParameters: authHeaders,
           automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/patients/identify`, httpMethod: "POST" },
         },
@@ -160,7 +141,7 @@ class UltravoxClient {
               required: false,
             },
           ],
-          staticParameters: withPatientId,
+          staticParameters: authHeaders,
           automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/patients/update`, httpMethod: "POST" },
         },
@@ -172,7 +153,7 @@ class UltravoxClient {
             "Fetch all currently available doctors at this clinic. " +
             "Call this when the patient asks who is available, wants to choose a doctor, or when you need to present doctor options before booking. " +
             "Returns a list of doctors with their name, specialty, qualification, languages, and consultation fee.",
-          staticParameters: withClinicId,
+          staticParameters: authHeaders,
           automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/doctors/list`, httpMethod: "POST" },
         },
@@ -230,7 +211,7 @@ class UltravoxClient {
               required: false,
             },
           ],
-          staticParameters: withBooking,
+          staticParameters: authHeaders,
           automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/appointments/book`, httpMethod: "POST" },
         },
@@ -261,7 +242,7 @@ class UltravoxClient {
           description:
             "Debug tool — call this any time to verify what the server receives. " +
             "It echoes back all headers and body parameters exactly as the server sees them. " +
-            "Use it to confirm static parameters, auth headers, and automatic parameters are arriving correctly.",
+            "Use it to confirm auth headers and automatic parameters are arriving correctly.",
           dynamicParameters: [
             {
               name: "testMessage",
@@ -270,11 +251,7 @@ class UltravoxClient {
               required: false,
             },
           ],
-          staticParameters: [
-            { name: "staticClinicId", location: "PARAMETER_LOCATION_BODY", value: clinicId },
-            { name: "staticPatientId", location: "PARAMETER_LOCATION_BODY", value: patientId },
-            { name: "staticContactNumber", location: "PARAMETER_LOCATION_BODY", value: twilioFrom },
-          ],
+          staticParameters: authHeaders,
           automaticParameters: autoParams,
           http: { baseUrlPattern: `${base}/debug/echo`, httpMethod: "POST" },
         },

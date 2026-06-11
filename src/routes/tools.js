@@ -4,15 +4,31 @@ const crypto = require("node:crypto");
 function createToolsRouter(supabaseClient, callStore) {
   const router = Router();
 
+  // Resolve call context from the ultravoxCallId that Ultravox auto-injects into every tool call.
+  // Returns { clinicId, patientId, phoneNumber } or null if the callId is unknown.
+  function resolveCallCtx(ultravoxCallId, log) {
+    if (!ultravoxCallId) {
+      log?.warn("Tool called without ultravoxCallId — cannot resolve call context");
+      return null;
+    }
+    const ctx = callStore?.get(ultravoxCallId) ?? null;
+    if (!ctx) {
+      log?.warn({ ultravoxCallId }, "ultravoxCallId not found in call store");
+    }
+    return ctx;
+  }
+
   // POST /tools/patients/identify
-  // Look up patient by contactNumber + clinicId, create if not found.
+  // Look up patient by phone number + clinicId (both resolved server-side), create if not found.
   router.post("/patients/identify", async (req, res) => {
     req.log.info({ headers: req.headers, body: req.body }, "[tool] identify_patient invoked");
-    const { contactNumber, clinicId, fullName = null, ultravoxCallId = null } = req.body ?? {};
+    const { ultravoxCallId, fullName = null } = req.body ?? {};
 
-    if (!contactNumber || !clinicId) {
-      return res.status(422).json({ error: "contactNumber and clinicId are required" });
+    const ctx = resolveCallCtx(ultravoxCallId, req.log);
+    if (!ctx?.clinicId || !ctx?.phoneNumber) {
+      return res.status(422).json({ error: "Unable to resolve clinic or caller from call context" });
     }
+    const { clinicId, phoneNumber: contactNumber } = ctx;
 
     const { data: existing, error: lookupError } = await supabaseClient
       .from("Patient")
@@ -27,7 +43,7 @@ function createToolsRouter(supabaseClient, callStore) {
     }
 
     if (existing) {
-      if (ultravoxCallId) callStore?.upsert(ultravoxCallId, { phoneNumber: existing.contactNumber, patientId: existing.id });
+      if (ultravoxCallId) callStore?.upsert(ultravoxCallId, { patientId: existing.id });
       return res.json({
         patientId: existing.id,
         fullName: existing.fullName ?? null,
@@ -57,7 +73,7 @@ function createToolsRouter(supabaseClient, callStore) {
       return res.status(500).json({ error: "Internal server error" });
     }
 
-    if (ultravoxCallId) callStore?.upsert(ultravoxCallId, { phoneNumber: created.contactNumber, patientId: created.id });
+    if (ultravoxCallId) callStore?.upsert(ultravoxCallId, { patientId: created.id });
     return res.status(201).json({
       patientId: created.id,
       fullName: created.fullName ?? null,
@@ -73,10 +89,13 @@ function createToolsRouter(supabaseClient, callStore) {
   // PATCH semantics — only updates fields present in the payload. Null-fills omitted fields.
   router.post("/patients/update", async (req, res) => {
     req.log.info({ headers: req.headers, body: req.body }, "[tool] update_patient invoked");
-    const { patientId, fullName, age, gender } = req.body ?? {};
+    const { ultravoxCallId, fullName, age, gender } = req.body ?? {};
+
+    const ctx = resolveCallCtx(ultravoxCallId, req.log);
+    const patientId = ctx?.patientId ?? null;
 
     if (!patientId) {
-      return res.status(422).json({ error: "patientId is required" });
+      return res.status(422).json({ error: "Unable to resolve patientId from call context — call identify_patient first" });
     }
 
     const patch = {};
@@ -134,13 +153,16 @@ function createToolsRouter(supabaseClient, callStore) {
   });
 
   // POST /tools/doctors/list
-  // Returns all active doctors for a clinic.
+  // Returns all active doctors for the clinic resolved from call context.
   router.post("/doctors/list", async (req, res) => {
     req.log.info({ headers: req.headers, body: req.body }, "[tool] list_doctors invoked");
-    const { clinicId } = req.body ?? {};
+    const { ultravoxCallId } = req.body ?? {};
+
+    const ctx = resolveCallCtx(ultravoxCallId, req.log);
+    const clinicId = ctx?.clinicId ?? null;
 
     if (!clinicId) {
-      return res.status(422).json({ error: "clinicId is required" });
+      return res.status(422).json({ error: "Unable to resolve clinicId from call context" });
     }
 
     const { data, error } = await supabaseClient
@@ -167,13 +189,11 @@ function createToolsRouter(supabaseClient, callStore) {
   });
 
   // POST /tools/appointments/book
-  // Creates an appointment. Only patientId, clinicId, doctorId are required;
-  // all clinical fields default to null so the call never fails mid-collection.
+  // Creates an appointment. patientId and clinicId are resolved from call context.
   router.post("/appointments/book", async (req, res) => {
     req.log.info({ headers: req.headers, body: req.body }, "[tool] book_appointment invoked");
     const {
-      patientId,
-      clinicId,
+      ultravoxCallId,
       doctorId,
       bookerRelation = null,
       proxyName = null,
@@ -181,11 +201,14 @@ function createToolsRouter(supabaseClient, callStore) {
       notes = null,
       timeslot = null,
       durationMinutes = null,
-      ultravoxCallId = null,
     } = req.body ?? {};
 
+    const ctx = resolveCallCtx(ultravoxCallId, req.log);
+    const clinicId = ctx?.clinicId ?? null;
+    const patientId = ctx?.patientId ?? null;
+
     if (!patientId || !clinicId || !doctorId) {
-      return res.status(422).json({ error: "patientId, clinicId and doctorId are required" });
+      return res.status(422).json({ error: "doctorId is required; patientId and clinicId must be resolvable from call context" });
     }
 
     const id = `apt_${crypto.randomUUID()}`;
