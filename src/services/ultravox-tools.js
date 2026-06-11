@@ -85,10 +85,10 @@ function bookAppointmentTool(base, headers, auto) {
       description:
         "Create an appointment once the patient has confirmed a doctor. " +
         "Only collect doctorId, timeslot, and symptoms — nothing else. " +
-        "Do not ask for name, age, gender, or any other detail; the intake form handles those after the call. " +
         "timeslot and symptoms are optional — book immediately if the patient skips them. " +
         "patientId and clinicId are resolved server-side; never ask the caller for them. " +
-        "Returns appointmentId, status, and formUrl — always read formUrl to the patient at the end of the call.",
+        "After booking, say the date and time naturally (e.g. 'Thursday the 12th at 6 in the evening') — never read out the ISO string. " +
+        "Do NOT mention or read out the form URL — the form is handled separately.",
       dynamicParameters: [
         bodyParam("doctorId", { type: "string", description: "Doctor's unique ID from list_doctors — never guess this value" }, true),
         bodyParam("timeslot", { type: "string", description: "Preferred date and time in ISO 8601, e.g. '2026-06-15T10:30:00+05:30'" }),
@@ -101,20 +101,19 @@ function bookAppointmentTool(base, headers, auto) {
   };
 }
 
-function getAppointmentFormTool(base, headers, auto) {
+function sendFormTool(base, headers, auto) {
   return {
     temporaryTool: {
-      modelToolName: "get_appointment_form",
+      modelToolName: "send_form",
       description:
-        "Retrieve the intake form URL for a booked appointment. " +
-        "Call this immediately after book_appointment using the returned appointmentId. " +
-        "Always share the formUrl with the patient before ending the call.",
-      dynamicParameters: [
-        bodyParam("appointmentId", { type: "string", description: "Appointment ID returned by book_appointment, e.g. 'apt_...'" }, true),
-      ],
+        "Send the patient intake form to the caller's phone number. " +
+        "Call this ONLY if the caller explicitly asks for the form to be sent " +
+        "(e.g. 'send me the link', 'WhatsApp me the form', 'can you send the form to my number'). " +
+        "Do not call this automatically after booking — only on explicit request. " +
+        "No parameters needed — the appointment and phone number are already known from this call.",
       staticParameters: headers,
       automaticParameters: auto,
-      http: httpPost(base, "/appointments/form"),
+      http: httpPost(base, "/appointments/send-form"),
     },
   };
 }
@@ -151,7 +150,7 @@ function buildToolOverrides(baseUrl, apiKey) {
       updatePatientTool(baseUrl, headers, auto),
       listDoctorsTool(baseUrl, headers, auto),
       bookAppointmentTool(baseUrl, headers, auto),
-      getAppointmentFormTool(baseUrl, headers, auto),
+      sendFormTool(baseUrl, headers, auto),
       debugEchoTool(baseUrl, headers, auto),
     ],
   };

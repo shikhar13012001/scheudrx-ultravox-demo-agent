@@ -60,6 +60,8 @@ function createAppointmentsRouter(supabaseClient, callStore) {
       return res.status(500).json({ error: "Internal server error" });
     }
 
+    const appointmentFormUrl = formUrl(data.clinicId, data.id);
+
     if (ultravoxCallId) {
       callStore?.upsert(ultravoxCallId, {
         appointment: {
@@ -67,10 +69,16 @@ function createAppointmentsRouter(supabaseClient, callStore) {
           doctorId: data.doctorId,
           timeslot: data.timeslot ?? null,
           status: data.status,
-          formUrl: formUrl(data.clinicId, data.id),
+          formUrl: appointmentFormUrl,
         },
       });
     }
+
+    // Log the form URL for manual delivery until SMS is configured.
+    req.log.info(
+      { appointmentId: data.id, phoneNumber: ctx?.phoneNumber ?? null, formUrl: appointmentFormUrl },
+      "[form] appointment booked — form URL logged for delivery",
+    );
 
     return res.status(201).json({
       appointmentId: data.id,
@@ -80,35 +88,32 @@ function createAppointmentsRouter(supabaseClient, callStore) {
       symptoms: data.symptoms ?? null,
       timeslot: data.timeslot ?? null,
       status: data.status,
-      formUrl: formUrl(data.clinicId, data.id),
     });
   });
 
-  router.post("/form", async (req, res) => {
-    req.log.info({ body: req.body }, "[tool] get_appointment_form invoked");
-    const { appointmentId } = req.body ?? {};
+  // POST /tools/appointments/send-form
+  // Placeholder for SMS delivery — logs the form URL until messaging is configured.
+  router.post("/send-form", async (req, res) => {
+    req.log.info({ body: req.body }, "[tool] send_form invoked");
+    const { ultravoxCallId } = req.body ?? {};
 
-    if (!appointmentId) {
-      return res.status(422).json({ error: "appointmentId is required" });
+    const ctx = resolveCallCtx(callStore, ultravoxCallId, req.log);
+    const appointmentFormUrl = ctx?.appointment?.formUrl ?? null;
+    const phoneNumber = ctx?.phoneNumber ?? null;
+
+    if (!appointmentFormUrl) {
+      return res.status(422).json({ error: "No booked appointment found in this call — book an appointment first" });
     }
 
-    const { data, error } = await supabaseClient
-      .from("Appointment")
-      .select("id, clinicId")
-      .eq("id", appointmentId)
-      .maybeSingle();
-
-    if (error) {
-      req.log.error({ err: error, appointmentId }, "Appointment form lookup failed");
-      return res.status(500).json({ error: "Internal server error" });
-    }
-
-    if (!data) return res.status(404).json({ error: "Appointment not found" });
+    req.log.info(
+      { phoneNumber, formUrl: appointmentFormUrl },
+      "[form] SMS not configured — form URL logged for manual delivery",
+    );
 
     return res.json({
-      appointmentId: data.id,
-      clinicId: data.clinicId,
-      formUrl: formUrl(data.clinicId, data.id),
+      delivered: false,
+      note: "Form URL has been logged. SMS delivery will be available once messaging is configured.",
+      formUrl: appointmentFormUrl,
     });
   });
 
