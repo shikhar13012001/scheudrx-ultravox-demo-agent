@@ -1,8 +1,5 @@
 "use client";
 
-// Time-grid view used for both "week" (7 days) and "day" (1 day).
-// Events are absolutely positioned; overlapping events share the column width.
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay, isToday } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -21,7 +18,6 @@ interface Positioned {
   cols: number;
 }
 
-// Assign overlapping events to side-by-side columns within each overlap cluster.
 function layoutEvents(events: CalEvent[]): Positioned[] {
   const sorted = [...events].sort((a, b) => a.startTs - b.startTs || a.endTs - b.endTs);
   const result: Positioned[] = [];
@@ -62,7 +58,6 @@ function layoutEvents(events: CalEvent[]): Positioned[] {
 function minutesIntoGrid(ts: number, day: Date): number {
   const d = new Date(ts);
   if (!isSameDay(d, day)) {
-    // event spills over from another day — clamp
     return d.getTime() < day.getTime() ? 0 : (HOUR_END - HOUR_START) * 60;
   }
   return d.getHours() * 60 + d.getMinutes() - HOUR_START * 60;
@@ -85,7 +80,6 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
   const scrollRef = useRef<HTMLDivElement>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
-  // Scroll to 9:00 on mount; refresh the now-line every minute.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: (9 - HOUR_START) * HOUR_PX - 16 });
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
@@ -116,15 +110,13 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
   };
 
   const now = new Date(nowTick);
-  const nowOffset =
-    now.getHours() * 60 + now.getMinutes() - HOUR_START * 60;
+  const nowOffset = now.getHours() * 60 + now.getMinutes() - HOUR_START * 60;
   const showNowLine = nowOffset >= 0 && nowOffset <= (HOUR_END - HOUR_START) * 60;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card">
-      {/* Day headers */}
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card shadow-sm">
       <div
-        className="grid border-b bg-muted/40"
+        className="grid border-b bg-muted/45"
         style={{ gridTemplateColumns: `64px repeat(${days.length}, 1fr)` }}
       >
         <div />
@@ -133,15 +125,15 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
             key={day.toISOString()}
             className={cn(
               "border-l px-2 py-2 text-center",
-              isToday(day) && "bg-primary/5",
+              isToday(day) && "bg-primary/8",
             )}
           >
-            <div className="text-xs font-medium uppercase text-muted-foreground">
+            <div className="text-[11px] font-semibold uppercase leading-none text-muted-foreground">
               {format(day, "EEE")}
             </div>
             <div
               className={cn(
-                "mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold",
+                "mx-auto mt-1 flex h-7 w-7 items-center justify-center rounded-full font-mono text-sm font-semibold leading-none",
                 isToday(day) && "bg-primary text-primary-foreground",
               )}
             >
@@ -151,7 +143,6 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
         ))}
       </div>
 
-      {/* Scrollable time grid */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div
           className="relative grid"
@@ -160,12 +151,11 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
             height: GRID_HEIGHT,
           }}
         >
-          {/* Hour gutter */}
           <div className="relative">
             {hours.map((h) => (
               <div
                 key={h}
-                className="absolute right-2 -translate-y-1/2 text-[11px] text-muted-foreground"
+                className="absolute right-2 -translate-y-1/2 font-mono text-[11px] leading-none text-muted-foreground"
                 style={{ top: (h - HOUR_START) * HOUR_PX }}
               >
                 {h === HOUR_START ? "" : format(new Date(2000, 0, 1, h), "h a")}
@@ -173,7 +163,6 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
             ))}
           </div>
 
-          {/* Day columns */}
           {days.map((day, dayIdx) => (
             <div
               key={day.toISOString()}
@@ -183,16 +172,14 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
               )}
               onClick={(e) => handleColumnClick(day, e)}
             >
-              {/* hour lines */}
               {hours.map((h) => (
                 <div
                   key={h}
-                  className="pointer-events-none absolute inset-x-0 border-t border-border/60"
+                  className="pointer-events-none absolute inset-x-0 border-t border-border/55"
                   style={{ top: (h - HOUR_START) * HOUR_PX }}
                 />
               ))}
 
-              {/* now indicator */}
               {isToday(day) && showNowLine && (
                 <div
                   className="pointer-events-none absolute inset-x-0 z-20 flex items-center"
@@ -203,7 +190,6 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
                 </div>
               )}
 
-              {/* events */}
               {eventsByDay[dayIdx].map(({ event, col, cols }) => {
                 const doctor = doctorById.get(event.doctorId);
                 const startMin = Math.max(0, minutesIntoGrid(event.startTs, day));
@@ -223,7 +209,8 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
                       e.stopPropagation();
                       onEventClick(event);
                     }}
-                    className="absolute z-10 overflow-hidden rounded-md border border-white/20 px-1.5 py-0.5 text-left text-white shadow-sm transition-opacity hover:opacity-90"
+                    className="absolute z-10 overflow-hidden rounded-md border border-white/25 px-1.5 py-0.5 text-left text-white shadow-sm outline-none transition-all hover:-translate-y-px hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/70"
+                    aria-label={`${event.title}, ${format(new Date(event.startTs), "h:mm a")}, ${doctor?.fullName ?? event.doctorId}`}
                     style={{
                       top,
                       height,
@@ -232,12 +219,12 @@ export function WeekView({ days, events, doctors, onSlotClick, onEventClick }: W
                       backgroundColor: doctor?.color ?? "#64748b",
                     }}
                   >
-                    <div className="truncate text-[11px] font-semibold leading-tight">
+                    <div className="truncate text-[11px] font-semibold leading-[1.05]">
                       {event.title}
                     </div>
                     {height > 36 && (
-                      <div className="truncate text-[10px] opacity-90">
-                        {format(new Date(event.startTs), "h:mm a")} ·{" "}
+                      <div className="truncate font-mono text-[10px] leading-tight opacity-90">
+                        {format(new Date(event.startTs), "h:mm a")} -{" "}
                         {doctor?.fullName ?? event.doctorId}
                       </div>
                     )}

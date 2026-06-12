@@ -1,7 +1,5 @@
 "use client";
 
-// Month grid: event chips per day, "+N more" jumps to day view.
-
 import { useMemo } from "react";
 import { format, isSameDay, isSameMonth, isToday } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -11,7 +9,7 @@ import type { DoctorWithColor } from "@/hooks/use-scheduler";
 const MAX_CHIPS = 3;
 
 interface MonthViewProps {
-  days: Date[]; // full weeks covering the month (multiple of 7)
+  days: Date[];
   anchor: Date;
   events: CalEvent[];
   doctors: DoctorWithColor[];
@@ -40,12 +38,12 @@ export function MonthView({
   );
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card">
-      <div className="grid grid-cols-7 border-b bg-muted/40">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card shadow-sm">
+      <div className="grid grid-cols-7 border-b bg-muted/45">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
           <div
             key={d}
-            className="px-2 py-1.5 text-center text-xs font-medium uppercase text-muted-foreground"
+            className="px-2 py-1.5 text-center text-[11px] font-semibold uppercase leading-none text-muted-foreground"
           >
             {d}
           </div>
@@ -64,14 +62,15 @@ export function MonthView({
             <div
               key={day.toISOString()}
               className={cn(
-                "flex cursor-pointer flex-col gap-1 border-b border-l p-1.5 transition-colors hover:bg-muted/30",
+                "flex cursor-pointer flex-col gap-1 border-b border-l p-1.5 transition-colors hover:bg-muted/35",
                 !isSameMonth(day, anchor) && "bg-muted/20 text-muted-foreground",
+                isToday(day) && "bg-primary/[0.04]",
               )}
               onClick={() => onDayClick(day)}
             >
               <div
                 className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
+                  "flex h-6 w-6 items-center justify-center rounded-full font-mono text-xs font-semibold leading-none",
                   isToday(day) && "bg-primary text-primary-foreground",
                 )}
               >
@@ -88,10 +87,11 @@ export function MonthView({
                       e.stopPropagation();
                       onEventClick(event);
                     }}
-                    className="flex items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] font-medium text-white hover:opacity-90"
+                    className="flex items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] font-semibold leading-tight text-white outline-none transition-all hover:-translate-y-px hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring/70"
+                    aria-label={`${event.title}, ${format(new Date(event.startTs), "HH:mm")}, ${doctor?.fullName ?? event.doctorId}`}
                     style={{ backgroundColor: doctor?.color ?? "#64748b" }}
                   >
-                    <span className="shrink-0 opacity-90">
+                    <span className="shrink-0 font-mono opacity-90">
                       {format(new Date(event.startTs), "HH:mm")}
                     </span>
                     <span className="truncate">{event.title}</span>
@@ -100,7 +100,7 @@ export function MonthView({
               })}
 
               {overflow > 0 && (
-                <div className="px-1 text-[11px] font-medium text-muted-foreground">
+                <div className="px-1 font-mono text-[11px] font-medium text-muted-foreground">
                   +{overflow} more
                 </div>
               )}

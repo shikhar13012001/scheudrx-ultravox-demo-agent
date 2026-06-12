@@ -95,10 +95,12 @@ export function useScheduler() {
   useEffect(() => {
     if (!clinicId) return;
     let cancelled = false;
-    setLoadingDoctors(true);
-    setEvents([]);
     (async () => {
       try {
+        await Promise.resolve();
+        if (cancelled) return;
+        setLoadingDoctors(true);
+        setEvents([]);
         const data = await apiJson<{ doctors: Doctor[]; clinic: ClinicInfo | null }>(
           `/api/doctors?clinicId=${encodeURIComponent(clinicId)}`,
         );
@@ -123,9 +125,11 @@ export function useScheduler() {
   useEffect(() => {
     if (!clinicId) return;
     let cancelled = false;
-    setLoadingEvents(true);
     (async () => {
       try {
+        await Promise.resolve();
+        if (cancelled) return;
+        setLoadingEvents(true);
         const data = await apiJson<{ events: CalEvent[] }>(
           `/api/events?start=${range.start.getTime()}&end=${range.end.getTime()}&clinicId=${encodeURIComponent(clinicId)}`,
         );

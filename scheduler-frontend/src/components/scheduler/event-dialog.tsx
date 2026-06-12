@@ -67,23 +67,30 @@ export function EventDialog({
   // Sync form whenever the dialog opens.
   useEffect(() => {
     if (!state) return;
-    if (state.mode === "create") {
-      const firstBookable = doctors.find((d) => d.hasCalendar);
-      setDoctorId(state.doctorId ?? firstBookable?.id ?? "");
-      setTitle("Appointment");
-      setDate(format(state.start, "yyyy-MM-dd"));
-      setTime(format(state.start, "HH:mm"));
-      setDuration("30");
-      setBusy(true);
-    } else {
-      const e = state.event;
-      setDoctorId(e.doctorId);
-      setTitle(e.title);
-      setDate(format(new Date(e.startTs), "yyyy-MM-dd"));
-      setTime(format(new Date(e.startTs), "HH:mm"));
-      setDuration(String(Math.round((e.endTs - e.startTs) / 60_000)));
-      setBusy(e.busy);
-    }
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      if (state.mode === "create") {
+        const firstBookable = doctors.find((d) => d.hasCalendar);
+        setDoctorId(state.doctorId ?? firstBookable?.id ?? "");
+        setTitle("Appointment");
+        setDate(format(state.start, "yyyy-MM-dd"));
+        setTime(format(state.start, "HH:mm"));
+        setDuration("30");
+        setBusy(true);
+      } else {
+        const e = state.event;
+        setDoctorId(e.doctorId);
+        setTitle(e.title);
+        setDate(format(new Date(e.startTs), "yyyy-MM-dd"));
+        setTime(format(new Date(e.startTs), "HH:mm"));
+        setDuration(String(Math.round((e.endTs - e.startTs) / 60_000)));
+        setBusy(e.busy);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [state, doctors]);
 
   if (!state) return null;
@@ -179,7 +186,7 @@ export function EventDialog({
               {doctors.map((d) => (
                 <option key={d.id} value={d.id} disabled={!d.hasCalendar}>
                   {d.fullName}
-                  {d.specialty ? ` — ${d.specialty}` : ""}
+                  {d.specialty ? ` - ${d.specialty}` : ""}
                   {!d.hasCalendar ? " (no calendar)" : ""}
                 </option>
               ))}
@@ -234,7 +241,7 @@ export function EventDialog({
                 ))}
               </select>
             </div>
-            <div className="flex h-9 items-center justify-between rounded-lg border px-3">
+            <div className="flex h-9 items-center justify-between rounded-lg border bg-muted/30 px-3">
               <Label htmlFor="evt-busy" className="text-sm">
                 Blocks slot
               </Label>
@@ -246,7 +253,7 @@ export function EventDialog({
         <DialogFooter className="gap-2 sm:justify-between">
           {isEdit ? (
             <Button variant="destructive" onClick={handleDelete} disabled={deleting || saving}>
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? "Deleting..." : "Delete"}
             </Button>
           ) : (
             <span />
@@ -256,7 +263,7 @@ export function EventDialog({
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saving || deleting}>
-              {saving ? "Saving…" : isEdit ? "Save changes" : "Create"}
+              {saving ? "Saving..." : isEdit ? "Save changes" : "Create"}
             </Button>
           </div>
         </DialogFooter>
