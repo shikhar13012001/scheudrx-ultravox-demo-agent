@@ -26,6 +26,16 @@ function buildScheduleRules(doctorRules) {
   }));
 }
 
+// Resolve a doctor's existing schedule through the clinic service membership.
+// Returns the schedule object or null if the doctor is not yet a service member.
+async function findExistingSchedule(nettuClient, serviceId, nettuUserId) {
+  if (!serviceId) return null;
+  const service = await nettuClient.getService(serviceId);
+  const member  = service?.users?.find((u) => u.userId === nettuUserId);
+  if (!member?.availability?.id) return null;
+  return nettuClient.getSchedule(member.availability.id);
+}
+
 // ─── Clinic service ───────────────────────────────────────────────────────────
 
 async function getOrCreateClinicService(nettuClient, supabaseClient, clinicId, log) {
@@ -88,11 +98,11 @@ async function getOrCreateDoctorCalendar(nettuClient, supabaseClient, doctorId, 
   }
 
   // Create or reuse schedule (one rule per weekday — nettu does not accept multi-weekday rules).
-  let schedule    = null;
-  const schedules = await nettuClient.getUserSchedules(nettuUser.id);
+  // nettu has no "list schedules for user" endpoint, so an existing schedule is
+  // resolved through the clinic service membership (availability.id).
+  let schedule = await findExistingSchedule(nettuClient, clinic.schedulerServiceId, nettuUser.id);
 
-  if (schedules.length > 0) {
-    schedule = schedules[0];
+  if (schedule) {
     log?.debug({ doctorId, scheduleId: schedule.id }, "[calendarSvc] existing schedule found");
   } else {
     schedule = await nettuClient.createSchedule(nettuUser.id, {

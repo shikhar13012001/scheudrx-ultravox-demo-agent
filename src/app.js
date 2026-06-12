@@ -2,9 +2,9 @@ const express = require("express");
 const pinoHttp = require("pino-http");
 const { config } = require("./config");
 const { logger } = require("./logger");
-const { verifyTwilioSignature } = require("./security/twilio-signature");
-const { verifyUltravoxSignature } = require("./security/ultravox-signature");
 const { bearerAuth } = require("./middleware/bearer-auth");
+const { errorHandler } = require("./middleware/error-handler");
+const { createWebhooksRouter } = require("./routes/webhooks");
 const { createToolsRouter } = require("./routes/tools");
 const callStore = require("./stores/call-store");
 
@@ -38,55 +38,7 @@ function createApp({ callService, supabaseClient, nettuClient }) {
     });
   });
 
-  app.post("/webhooks/twilio/incoming", async (request, response, next) => {
-    try {
-      if (!verifyTwilioSignature(request)) {
-        request.log.warn("Rejected Twilio inbound webhook with invalid signature");
-        return response.status(403).json({ error: "Invalid Twilio signature" });
-      }
-
-      const twiml = await callService.handleInboundTwilioWebhook(request.body);
-      response.type("text/xml").send(twiml);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.post("/webhooks/twilio/status", async (request, response, next) => {
-    try {
-      if (!verifyTwilioSignature(request)) {
-        request.log.warn("Rejected Twilio status webhook with invalid signature");
-        return response.status(403).json({ error: "Invalid Twilio signature" });
-      }
-
-      await callService.recordTwilioStatus(request.body);
-      response.status(204).send();
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.post("/webhooks/ultravox", async (request, response, next) => {
-    try {
-      if (!verifyUltravoxSignature(request)) {
-        request.log.warn("Rejected Ultravox webhook with invalid signature");
-        return response.status(403).json({ error: "Invalid Ultravox signature" });
-      }
-
-      await callService.recordUltravoxCallback(request.body);
-
-      // Clean up in-memory call state once the call ends.
-      const endedCallId = request.body?.call?.callId;
-      if (endedCallId && request.body?.event === "call.ended") {
-        request.log.info({ ultravoxCallId: endedCallId, entry: callStore.get(endedCallId) }, "[callStore] removing ended call");
-        callStore.remove(endedCallId);
-      }
-
-      response.status(204).send();
-    } catch (error) {
-      next(error);
-    }
-  });
+  app.use("/webhooks", createWebhooksRouter(callService));
 
   // No-auth echo tool — register BEFORE bearerAuth so Ultravox can call it without a key.
   // Use this to inspect exactly what Ultravox sends (headers + body) during a tool call.
@@ -101,14 +53,7 @@ function createApp({ callService, supabaseClient, nettuClient }) {
 
   app.use("/tools", bearerAuth, createToolsRouter(supabaseClient, callStore, nettuClient));
 
-  app.use((error, request, response, next) => {
-    const statusCode = error.statusCode || 500;
-    const message = error.expose ? error.message : "Internal server error";
-    const logLevel = statusCode >= 500 ? "error" : "warn";
-
-    request.log[logLevel]({ err: error }, "Request failed");
-    response.status(statusCode).json({ error: message });
-  });
+  app.use(errorHandler);
 
   return app;
 }

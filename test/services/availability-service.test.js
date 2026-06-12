@@ -106,7 +106,7 @@ describe("getAvailableSlots", () => {
     const slot1Ms = nowMs + 60 * 60 * 1000; // 1 hour from now
 
     const { slots } = await getAvailableSlots(
-      makeNettu([{ start: slot1Ms, duration: 30 }]),
+      makeNettu([{ start: slot1Ms, duration: 30 * 60 * 1000 }]),
       makeSupabase(),
       { clinicId: "poc-clinic-001", doctorId: "doc-priya-001", timezone: "Asia/Kolkata" },
     );

@@ -33,7 +33,7 @@ test("creates an inbound Ultravox call with Twilio medium and callbacks", async 
 
   const body = JSON.parse(request.options.body);
   assert.deepEqual(body.medium, { twilio: {} });
-  assert.deepEqual(body.metadata, { localCallId: "local-1" });
+  assert.deepEqual(body.metadata, { localCallId: "local-1", toolsBaseUrl: "https://api.example.test/tools" });
   assert.equal(body.callbacks.joined.url, "https://api.example.test/webhooks/ultravox");
   assert.equal(body.callbacks.ended.secrets[0], "webhook-secret");
   assert.equal(body.callbacks.billed.url, "https://api.example.test/webhooks/ultravox");

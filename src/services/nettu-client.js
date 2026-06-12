@@ -83,7 +83,7 @@ class NettuClient {
   async getUser(userId) {
     try {
       const data = await this.#request("GET", `/api/v1/user/${userId}`);
-      return data.user;
+      return data.user ?? data;
     } catch (err) {
       if (err instanceof NettuApiError && err.httpStatus === 404) return null;
       throw err;
@@ -100,7 +100,7 @@ class NettuClient {
   async getCalendar(userId, calendarId) {
     try {
       const data = await this.#request("GET", `/api/v1/user/${userId}/calendar/${calendarId}`);
-      return data.calendar;
+      return data.calendar ?? data;
     } catch (err) {
       if (err instanceof NettuApiError && err.httpStatus === 404) return null;
       throw err;
@@ -113,22 +113,24 @@ class NettuClient {
   //   { variant: { type: "WDay", value: "Mon" }, intervals: [{ start: {hours,minutes}, end: {hours,minutes} }] }
   //
   // Creation:  POST /api/v1/user/{userId}/schedule
-  // Update:    PUT  /api/v1/schedules/{scheduleId}   (path-level, not user-level)
-  // List:      GET  /api/v1/user/{userId}/schedule   (returns { schedules: [...] } or single { schedule })
+  // Get:       GET  /api/v1/user/schedule/{scheduleId}
+  // Update:    PUT  /api/v1/user/schedule/{scheduleId}
+  //
+  // NOTE: nettu has no "list schedules for user" endpoint. To find a doctor's
+  // existing schedule, resolve it via the clinic service:
+  // service.users[].availability.id (see calendar-service.findExistingSchedule).
 
   async createSchedule(userId, { timezone, rules = [] }) {
     const data = await this.#request("POST", `/api/v1/user/${userId}/schedule`, { timezone, rules });
     return data.schedule;
   }
 
-  async getUserSchedules(userId) {
+  async getSchedule(scheduleId) {
     try {
-      const data = await this.#request("GET", `/api/v1/user/${userId}/schedule`);
-      if (Array.isArray(data.schedules)) return data.schedules;
-      if (data.schedule) return [data.schedule];
-      return [];
+      const data = await this.#request("GET", `/api/v1/user/schedule/${scheduleId}`);
+      return data.schedule ?? data;
     } catch (err) {
-      if (err instanceof NettuApiError && err.httpStatus === 404) return [];
+      if (err instanceof NettuApiError && err.httpStatus === 404) return null;
       throw err;
     }
   }
@@ -137,7 +139,7 @@ class NettuClient {
     const body = {};
     if (timezone !== undefined) body.timezone = timezone;
     if (rules    !== undefined) body.rules    = rules;
-    const data = await this.#request("PUT", `/api/v1/schedules/${scheduleId}`, body);
+    const data = await this.#request("PUT", `/api/v1/user/schedule/${scheduleId}`, body);
     return data.schedule;
   }
 
@@ -150,8 +152,9 @@ class NettuClient {
 
   async getService(serviceId) {
     try {
+      // GET /service/{id} returns the service object directly (no { service } wrapper).
       const data = await this.#request("GET", `/api/v1/service/${serviceId}`);
-      return data.service;
+      return data.service ?? data;
     } catch (err) {
       if (err instanceof NettuApiError && err.httpStatus === 404) return null;
       throw err;
@@ -234,25 +237,29 @@ class NettuClient {
     return data.event;
   }
 
+  // Admin event get/update/delete routes take only the event ID:
+  // /api/v1/user/events/{eventId} — no user ID in the path.
+  // The userId parameter is kept for signature stability but not used.
+
   async updateEvent(userId, eventId, { startTs, durationMs, busy, metadata }) {
     const body = {};
     if (startTs   !== undefined) body.startTs  = startTs;
     if (durationMs !== undefined) body.duration = durationMs;
     if (busy      !== undefined) body.busy     = busy;
     if (metadata  !== undefined) body.metadata = metadata;
-    const data = await this.#request("PUT", `/api/v1/user/${userId}/events/${eventId}`, body);
+    const data = await this.#request("PUT", `/api/v1/user/events/${eventId}`, body);
     return data.event;
   }
 
   async deleteEvent(userId, eventId) {
-    const data = await this.#request("DELETE", `/api/v1/user/${userId}/events/${eventId}`);
-    return data.event;
+    const data = await this.#request("DELETE", `/api/v1/user/events/${eventId}`);
+    return data?.event ?? null;
   }
 
   async getEvent(userId, eventId) {
     try {
-      const data = await this.#request("GET", `/api/v1/user/${userId}/events/${eventId}`);
-      return data.event;
+      const data = await this.#request("GET", `/api/v1/user/events/${eventId}`);
+      return data.event ?? data;
     } catch (err) {
       if (err instanceof NettuApiError && err.httpStatus === 404) return null;
       throw err;

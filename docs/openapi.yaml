@@ -1,0 +1,755 @@
+openapi: 3.1.0
+info:
+  title: Schedurx Ultravox Demo API
+  version: 1.0.0
+  description: Contract baseline generated from the current Express routes.
+servers:
+  - url: https://api.example.test
+    description: Replace with PUBLIC_BASE_URL for deployed environments.
+components:
+  securitySchemes:
+    ToolsBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    TwilioSignature:
+      type: apiKey
+      in: header
+      name: X-Twilio-Signature
+    UltravoxWebhookSignature:
+      type: apiKey
+      in: header
+      name: X-Ultravox-Webhook-Signature
+  schemas:
+    SimpleError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    StructuredToolError:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          const: false
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type:
+                - object
+                - "null"
+              additionalProperties: true
+    Patient:
+      type: object
+      required: [patientId, fullName, contactNumber, age, gender, clinicId, isNew]
+      properties:
+        patientId:
+          type: string
+        fullName:
+          type:
+            - string
+            - "null"
+        contactNumber:
+          type: string
+        age:
+          type:
+            - integer
+            - "null"
+        gender:
+          type:
+            - string
+            - "null"
+        clinicId:
+          type: string
+        isNew:
+          type: boolean
+    Doctor:
+      type: object
+      required: [doctorId, fullName, specialty, qualification, languages, feeInr]
+      properties:
+        doctorId:
+          type: string
+        fullName:
+          type: string
+        specialty:
+          type:
+            - string
+            - "null"
+        qualification:
+          type:
+            - string
+            - "null"
+        languages:
+          type:
+            - array
+            - string
+            - "null"
+          items:
+            type: string
+        feeInr:
+          type:
+            - number
+            - integer
+            - "null"
+    Appointment:
+      type: object
+      required: [appointmentId, patientId, clinicId, doctorId, symptoms, timeslot, status]
+      properties:
+        appointmentId:
+          type: string
+        patientId:
+          type: string
+        clinicId:
+          type: string
+        doctorId:
+          type: string
+        symptoms:
+          type:
+            - string
+            - "null"
+        timeslot:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+    CalendarSuccess:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          const: true
+        data:
+          type: object
+          additionalProperties: true
+        message:
+          type:
+            - string
+            - "null"
+  responses:
+    Unauthorized:
+      description: Missing or invalid tools bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SimpleError"
+          examples:
+            unauthorized:
+              value:
+                error: Unauthorized
+    InternalServerError:
+      description: Unhandled server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SimpleError"
+          examples:
+            internal:
+              value:
+                error: Internal server error
+paths:
+  /health:
+    get:
+      summary: Health check.
+      responses:
+        "200":
+          description: Service is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, service, timestamp]
+                properties:
+                  ok:
+                    const: true
+                  service:
+                    const: schedurx-ultravox-demo-api
+                  timestamp:
+                    type: string
+                    format: date-time
+  /webhooks/twilio/incoming:
+    post:
+      summary: Twilio inbound voice webhook.
+      security:
+        - TwilioSignature: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                CallSid:
+                  type: string
+                From:
+                  type: string
+                To:
+                  type: string
+      responses:
+        "200":
+          description: TwiML that connects the call to Ultravox.
+          content:
+            text/xml:
+              schema:
+                type: string
+        "403":
+          description: Invalid Twilio signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+              examples:
+                invalidSignature:
+                  value:
+                    error: Invalid Twilio signature
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /webhooks/twilio/status:
+    post:
+      summary: Twilio call status webhook.
+      security:
+        - TwilioSignature: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "204":
+          description: Status event recorded.
+        "403":
+          description: Invalid Twilio signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+              examples:
+                invalidSignature:
+                  value:
+                    error: Invalid Twilio signature
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /webhooks/ultravox:
+    post:
+      summary: Ultravox lifecycle callback webhook.
+      security:
+        - UltravoxWebhookSignature: []
+      parameters:
+        - in: header
+          name: X-Ultravox-Webhook-Timestamp
+          required: true
+          schema:
+            type: string
+            format: date-time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "204":
+          description: Event recorded.
+        "403":
+          description: Invalid Ultravox signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+              examples:
+                invalidSignature:
+                  value:
+                    error: Invalid Ultravox signature
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /tools/debug/echo:
+    post:
+      summary: No-auth diagnostic echo tool.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Echo response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, received]
+                properties:
+                  message:
+                    type: string
+                  received:
+                    type: object
+                    required: [headers, body]
+                    properties:
+                      headers:
+                        type: object
+                        additionalProperties: true
+                      body:
+                        type: object
+                        additionalProperties: true
+  /tools/patients/identify:
+    post:
+      summary: Look up or create the caller patient for the current Ultravox call.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+      responses:
+        "200":
+          description: Existing patient found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Patient"
+        "201":
+          description: Patient created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Patient"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Call context missing clinic or caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /tools/patients/update:
+    post:
+      summary: Update patient demographic fields.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+                fullName:
+                  type:
+                    - string
+                    - "null"
+                age:
+                  type:
+                    - integer
+                    - "null"
+                gender:
+                  type:
+                    - string
+                    - "null"
+      responses:
+        "200":
+          description: Updated patient.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Patient"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Patient not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+        "422":
+          description: Patient ID missing from call context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /tools/doctors/list:
+    post:
+      summary: List active doctors for the resolved clinic.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+      responses:
+        "200":
+          description: Doctor list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [doctors]
+                properties:
+                  doctors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Doctor"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Clinic missing from call context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /tools/doctors/select:
+    post:
+      summary: Resolve a spoken doctor name and store it in call context.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+                doctorName:
+                  type: string
+      responses:
+        "200":
+          description: Doctor selected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Doctor"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: No doctor matched.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, availableDoctors]
+                properties:
+                  error:
+                    type: string
+                  availableDoctors:
+                    type: array
+                    items:
+                      type: string
+        "422":
+          description: Missing doctorName or clinic context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /tools/appointments/book:
+    post:
+      summary: Create an appointment record.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+                doctorId:
+                  type: string
+                symptoms:
+                  type:
+                    - string
+                    - "null"
+                timeslot:
+                  type:
+                    - string
+                    - "null"
+      responses:
+        "201":
+          description: Appointment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Appointment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Missing clinic, doctor, or patient context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /tools/appointments/send-form:
+    post:
+      summary: Log the intake form URL for manual delivery.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+      responses:
+        "200":
+          description: Form URL logged.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [delivered, note, formUrl]
+                properties:
+                  delivered:
+                    const: false
+                  note:
+                    type: string
+                  formUrl:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: No booked appointment in call context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleError"
+  /tools/calendar/slots:
+    post:
+      summary: Get available calendar slots for the selected doctor.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+                date:
+                  type: string
+                dateRange:
+                  type: object
+                  properties:
+                    start:
+                      type: string
+                    end:
+                      type: string
+                timezone:
+                  type: string
+      responses:
+        "200":
+          description: Available slots, or a structured NO_SLOTS_AVAILABLE tool error.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/CalendarSuccess"
+                  - $ref: "#/components/schemas/StructuredToolError"
+        "400":
+          description: Invalid timezone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Missing context or scheduling validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+        "500":
+          description: Scheduler or internal error in structured tool format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+  /tools/calendar/book:
+    post:
+      summary: Book a calendar-blocked appointment.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+                slotStart:
+                  type: string
+                slotEnd:
+                  type:
+                    - string
+                    - "null"
+                appointmentType:
+                  type: string
+                reason:
+                  type:
+                    - string
+                    - "null"
+      responses:
+        "201":
+          description: Appointment booked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarSuccess"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Slot no longer available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+        "422":
+          description: Missing context or validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+        "500":
+          description: Scheduler or internal error in structured tool format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+  /tools/calendar/reschedule:
+    post:
+      summary: Reschedule a calendar appointment.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+                appointmentId:
+                  type: string
+                newStart:
+                  type: string
+                newEnd:
+                  type:
+                    - string
+                    - "null"
+                reason:
+                  type:
+                    - string
+                    - "null"
+      responses:
+        "200":
+          description: Appointment rescheduled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarSuccess"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: New slot no longer available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+        "422":
+          description: Missing context or validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+        "500":
+          description: Scheduler or internal error in structured tool format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+  /tools/calendar/cancel:
+    post:
+      summary: Cancel a calendar appointment.
+      security:
+        - ToolsBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ultravoxCallId:
+                  type: string
+                appointmentId:
+                  type: string
+                reason:
+                  type:
+                    - string
+                    - "null"
+      responses:
+        "200":
+          description: Appointment cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarSuccess"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Missing context or cancellation validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"
+        "500":
+          description: Scheduler or internal error in structured tool format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuredToolError"

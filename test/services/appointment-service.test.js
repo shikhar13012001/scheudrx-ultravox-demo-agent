@@ -95,7 +95,7 @@ function makeSupabase({ clinic, doctor, appointment } = {}) {
 function makeNettu({ bookingConflict = false } = {}) {
   const { NettuApiError } = require("../../src/services/nettu-client");
   return {
-    async createBooking() {
+    async createEvent() {
       if (bookingConflict) {
         throw new NettuApiError("slot taken", 409);
       }
