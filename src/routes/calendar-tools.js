@@ -82,9 +82,10 @@ function createCalendarToolsRouter(nettuClient, supabaseClient, callStore) {
 
     const { ultravoxCallId, slotStart, slotEnd, appointmentType, reason } = req.body ?? {};
 
-    const ctx      = resolveCallCtx(callStore, ultravoxCallId, req.log);
-    const clinicId = ctx?.clinicId ?? null;
-    const doctorId = ctx?.doctorId ?? null;
+    const ctx       = resolveCallCtx(callStore, ultravoxCallId, req.log);
+    const clinicId  = ctx?.clinicId ?? null;
+    const doctorId  = ctx?.doctorId ?? null;
+    const patientId = ctx?.patientId ?? null;
 
     if (!clinicId) {
       return fail(res, 422, "CLINIC_NOT_FOUND",
@@ -105,6 +106,7 @@ function createCalendarToolsRouter(nettuClient, supabaseClient, callStore) {
         supabaseClient,
         {
           clinicId,
+          patientId,
           doctorId,
           start:           slotStart,
           end:             slotEnd ?? null,

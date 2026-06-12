@@ -41,7 +41,7 @@ function buildAuditEntry(action, { actor, reason, oldStart, newStart, oldEnd, ne
 // opts: { clinicId, doctorId, start, end?, patient: { name, phone, email? },
 //         appointmentType?, reason?, source? }
 async function bookAppointment(nettuClient, supabaseClient, opts, log) {
-  const { clinicId, doctorId, start, end, patient, appointmentType, reason, source = "system" } = opts;
+  const { clinicId, doctorId, patientId, start, end, patient, appointmentType, reason, source = "system" } = opts;
 
   const clinic      = await clinicSvc.requireActiveClinic(supabaseClient, clinicId);
   const doctor      = await doctorSvc.requireActiveDoctor(supabaseClient, doctorId, clinicId);
@@ -111,6 +111,7 @@ async function bookAppointment(nettuClient, supabaseClient, opts, log) {
     .insert({
       id:               appointmentId,
       clinicId,
+      patientId:        patientId ?? null,
       doctorId,
       timeslot:         start,
       symptoms:         reason ?? null,
