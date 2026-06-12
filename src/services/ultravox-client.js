@@ -1,4 +1,5 @@
 const { buildToolOverrides } = require("./ultravox-tools");
+const { buildPrompt } = require("../prompts/schedulo");
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 8000;
 
@@ -33,8 +34,6 @@ class UltravoxClient {
       }).filter(([, v]) => v != null),
     );
 
-    const nowIso = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T") + "+05:30";
-
     const body = {
       medium: { twilio: {} },
       firstSpeakerSettings: { agent: {} },
@@ -42,7 +41,7 @@ class UltravoxClient {
       joinTimeout: this.config.ULTRAVOX_JOIN_TIMEOUT,
       maxDuration: this.config.ULTRAVOX_MAX_DURATION,
       metadata: enrichedMetadata,
-      templateContext: { currentDate: nowIso, currentYear: String(new Date().getFullYear()) },
+      systemPrompt: buildPrompt(),
       toolOverrides: buildToolOverrides(
         `${this.config.PUBLIC_BASE_URL}/tools`,
         this.config.TOOLS_API_KEY,
