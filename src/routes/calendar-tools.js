@@ -11,8 +11,7 @@
 const { Router }                     = require("express");
 const { resolveCallCtx }             = require("./tool-helpers");
 const availabilitySvc                = require("../services/availability-service");
-const { bookAppointment,
-        rescheduleAppointment,
+const { rescheduleAppointment,
         cancelAppointment }          = require("../services/appointment-service");
 const { ok, fail, isValidTimezone, fetchAlternatives } = require("./calendar-tool-helpers");
 
@@ -73,89 +72,6 @@ function createCalendarToolsRouter(nettuClient, supabaseClient, callStore) {
       endDate:   result.endDate,
       slots:     result.slots,
     }, `Found ${result.slots.length} available slot(s)`);
-  });
-
-  // ── Book appointment ─────────────────────────────────────────────────────
-  // POST /tools/calendar/book
-  router.post("/book", async (req, res) => {
-    req.log.info({ body: req.body }, "[tool] book_calendar_appointment invoked");
-
-    const { ultravoxCallId, slotStart, slotEnd, appointmentType, reason } = req.body ?? {};
-
-    const ctx       = resolveCallCtx(callStore, ultravoxCallId, req.log);
-    const clinicId  = ctx?.clinicId ?? null;
-    const doctorId  = ctx?.doctorId ?? null;
-    const patientId = ctx?.patientId ?? null;
-
-    if (!clinicId) {
-      return fail(res, 422, "CLINIC_NOT_FOUND",
-        "clinicId could not be resolved — call identify_patient first");
-    }
-    if (!doctorId) {
-      return fail(res, 422, "DOCTOR_NOT_SELECTED",
-        "No doctor selected — call select_doctor first");
-    }
-    if (!slotStart) {
-      return fail(res, 422, "VALIDATION_ERROR", "slotStart is required");
-    }
-
-    let result;
-    try {
-      result = await bookAppointment(
-        nettuClient,
-        supabaseClient,
-        {
-          clinicId,
-          patientId,
-          doctorId,
-          start:           slotStart,
-          end:             slotEnd ?? null,
-          patient:         { name: null, phone: ctx?.phoneNumber ?? null },
-          appointmentType: appointmentType ?? "consultation",
-          reason:          reason ?? null,
-          source:          "ultravox",
-        },
-        req.log,
-      );
-    } catch (err) {
-      if (err.code === "SLOT_NOT_AVAILABLE") {
-        const alternatives = await fetchAlternatives(
-          nettuClient, supabaseClient,
-          { clinicId, doctorId, fromIso: slotStart },
-          req.log,
-        );
-        return fail(res, 409, "SLOT_NOT_AVAILABLE", "The selected slot is no longer available", {
-          alternatives,
-          suggestion: alternatives.length > 0
-            ? `${alternatives.length} alternative slot(s) available — present these to the patient`
-            : "No alternatives found in the next 7 days — ask the patient to try a different week",
-        });
-      }
-      req.log.warn({ err, clinicId, doctorId }, "[tool] book_calendar_appointment failed");
-      return fail(res, err.statusCode ?? 500, err.code ?? "SCHEDULER_API_ERROR", err.message);
-    }
-
-    if (ultravoxCallId) {
-      callStore?.upsert(ultravoxCallId, {
-        appointment: {
-          appointmentId: result.appointmentId,
-          doctorId:      result.doctorId,
-          timeslot:      result.start,
-          status:        result.status,
-        },
-      });
-    }
-
-    req.log.info(
-      { appointmentId: result.appointmentId, clinicId, doctorId, start: result.start },
-      "[tool] appointment booked",
-    );
-
-    return res.status(201).json({
-      success: true,
-      data:    { appointment: result },
-      message: `Appointment booked for ${result.start}`,
-    });
   });
 
   // ── Reschedule appointment ───────────────────────────────────────────────

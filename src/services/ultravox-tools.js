@@ -103,16 +103,18 @@ function bookAppointmentTool(base, headers, auto) {
     temporaryTool: {
       modelToolName: "book_appointment",
       description:
-        "Create an appointment once the patient has confirmed a doctor. " +
-        "Only collect doctorId, timeslot, and symptoms — nothing else. " +
-        "timeslot and symptoms are optional — book immediately if the patient skips them. " +
+        "Create a calendar-blocked appointment once the patient confirms a specific slot from get_doctor_available_slots. " +
+        "Requires select_doctor to have been called first — doctor is resolved from call context automatically. " +
+        "Only call this after the patient confirms a specific slot — never invent or guess a slot time. " +
         "patientId and clinicId are resolved server-side; never ask the caller for them. " +
-        "After booking, say the date and time naturally (e.g. 'Thursday the 12th at 6 in the evening') — never read out the ISO string. " +
+        "If the response is SLOT_NOT_AVAILABLE, the details.alternatives array contains fresh options — present those to the patient. " +
+        "After booking, confirm the date and time naturally — never read out the ISO string. " +
         "Do NOT mention or read out the form URL — the form is handled separately.",
       dynamicParameters: [
-        bodyParam("doctorId", { type: "string", description: "Doctor's unique ID from list_doctors — never guess this value" }, true),
-        bodyParam("timeslot", { type: "string", description: "Preferred date and time in ISO 8601, e.g. '2026-06-15T10:30:00+05:30'" }),
-        bodyParam("symptoms", { type: "string", description: "Brief description of the patient's symptoms or reason for visit" }),
+        bodyParam("slotStart", { type: "string", description: "Exact slot start time in ISO 8601 from get_doctor_available_slots, e.g. '2026-06-20T10:00:00+05:30'" }, true),
+        bodyParam("slotEnd",   { type: "string", description: "Slot end time in ISO 8601 — omit to use the default duration" }),
+        bodyParam("reason",    { type: "string", description: "Brief reason for the visit, e.g. 'fever and sore throat'" }),
+        bodyParam("appointmentType", { type: "string", enum: ["consultation", "follow-up", "emergency"], description: "Type of appointment" }),
       ],
       staticParameters: headers,
       automaticParameters: auto,
@@ -163,29 +165,6 @@ function getAvailableSlotsTool(base, headers, auto) {
       staticParameters:    headers,
       automaticParameters: auto,
       http: httpPost(base, "/calendar/slots"),
-    },
-  };
-}
-
-function bookCalendarAppointmentTool(base, headers, auto) {
-  return {
-    temporaryTool: {
-      modelToolName: "book_calendar_appointment",
-      description:
-        "Create a confirmed, calendar-blocked appointment for the patient. " +
-        "Requires select_doctor to have been called first — the doctor is resolved from call context automatically. " +
-        "Only call this after the patient confirms a specific slot from get_doctor_available_slots. " +
-        "If the response is SLOT_NOT_AVAILABLE, the details.alternatives array contains fresh options — present those to the patient. " +
-        "After booking, confirm the date and time naturally — never read out the ISO string.",
-      dynamicParameters: [
-        bodyParam("slotStart", { type: "string", description: "Exact slot start time in ISO 8601 from get_doctor_available_slots, e.g. '2026-06-20T10:00:00+05:30'" }, true),
-        bodyParam("slotEnd",   { type: "string", description: "Slot end time in ISO 8601 — omit to use the default duration" }),
-        bodyParam("reason",    { type: "string", description: "Brief reason for the visit, e.g. 'fever and sore throat'" }),
-        bodyParam("appointmentType", { type: "string", enum: ["consultation", "follow-up", "emergency"], description: "Type of appointment" }),
-      ],
-      staticParameters:    headers,
-      automaticParameters: auto,
-      http: httpPost(base, "/calendar/book"),
     },
   };
 }
@@ -272,7 +251,6 @@ function buildToolOverrides(baseUrl, apiKey) {
       sendFormTool(baseUrl, headers, auto),
       // Calendar-integrated tools (require NETTU_BASE_URL + NETTU_API_KEY).
       getAvailableSlotsTool(baseUrl, headers, auto),
-      bookCalendarAppointmentTool(baseUrl, headers, auto),
       rescheduleAppointmentTool(baseUrl, headers, auto),
       cancelAppointmentTool(baseUrl, headers, auto),
       debugEchoTool(baseUrl, headers, auto),
