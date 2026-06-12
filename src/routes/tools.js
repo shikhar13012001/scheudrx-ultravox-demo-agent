@@ -9,7 +9,7 @@ function createToolsRouter(supabaseClient, callStore, nettuClient) {
 
   router.use("/patients",     createPatientsRouter(supabaseClient, callStore));
   router.use("/doctors",      createDoctorsRouter(supabaseClient, callStore));
-  router.use("/appointments", createAppointmentsRouter(supabaseClient, callStore));
+  router.use("/appointments", createAppointmentsRouter(nettuClient, supabaseClient, callStore));
 
   // Calendar-integrated tools — only mounted when nettuClient is available.
   if (nettuClient) {

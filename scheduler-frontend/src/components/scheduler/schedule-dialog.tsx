@@ -46,10 +46,12 @@ export function ScheduleDialog({ doctor, onClose }: ScheduleDialogProps) {
   useEffect(() => {
     if (!doctor) return;
     let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
     (async () => {
       try {
+        await Promise.resolve();
+        if (cancelled) return;
+        setLoading(true);
+        setLoadError(null);
         const res = await fetch(`/api/doctors/${doctor.id}/schedule`);
         const json = await res.json().catch(() => null);
         if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
@@ -104,7 +106,7 @@ export function ScheduleDialog({ doctor, onClose }: ScheduleDialogProps) {
               className="h-3 w-3 rounded-full"
               style={{ backgroundColor: doctor.color }}
             />
-            Working hours — {doctor.fullName}
+            Working hours - {doctor.fullName}
           </DialogTitle>
           <DialogDescription className="flex items-center gap-2">
             Availability used by the booking engine.
@@ -169,7 +171,7 @@ export function ScheduleDialog({ doctor, onClose }: ScheduleDialogProps) {
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={saving || loading || Boolean(loadError)}>
-            {saving ? "Saving…" : "Save hours"}
+            {saving ? "Saving..." : "Save hours"}
           </Button>
         </DialogFooter>
       </DialogContent>
