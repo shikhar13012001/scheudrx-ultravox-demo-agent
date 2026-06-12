@@ -41,7 +41,7 @@ class UltravoxClient {
       joinTimeout: this.config.ULTRAVOX_JOIN_TIMEOUT,
       maxDuration: this.config.ULTRAVOX_MAX_DURATION,
       metadata: enrichedMetadata,
-      systemPrompt: buildPrompt(),
+      templateContext: { systemPrompt: buildPrompt() },
       toolOverrides: buildToolOverrides(
         `${this.config.PUBLIC_BASE_URL}/tools`,
         this.config.TOOLS_API_KEY,
